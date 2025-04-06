@@ -62,7 +62,7 @@ PROJECT_NAME="Coder-Agent"
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/collaborative-coding-agents.git
+git clone https://github.com/Hailu03/Coder-Agent.git
 cd Coder-Agent
 ```
 
