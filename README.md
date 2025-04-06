@@ -2,6 +2,8 @@
 
 Collaborative Coding Agents is an application that uses AI to automatically generate programming solutions through the coordination of specialized agents. The system leverages AI models to analyze, research, and generate code based on user requirements.
 
+![alt](image/app.png)
+
 ## System Architecture
 
 The system consists of two main components:
