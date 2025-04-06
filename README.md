@@ -55,7 +55,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 SERPER_API_KEY=your_serper_api_key_here
 
 # Other configurations
-PROJECT_NAME="Collaborative Coding Agents"
+PROJECT_NAME="Coder-Agent"
 ```
 
 ### Starting with Docker Compose
@@ -63,7 +63,7 @@ PROJECT_NAME="Collaborative Coding Agents"
 1. Clone the repository:
 ```bash
 git clone https://github.com/your-username/collaborative-coding-agents.git
-cd collaborative-coding-agents
+cd Coder-Agent
 ```
 
 2. Run the application:
