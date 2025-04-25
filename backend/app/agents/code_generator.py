@@ -199,35 +199,147 @@ class CodeGeneratorAgent(Agent):
                 break
         
         if not code:
+            logger.warning("No code found to refine in collaboration phase")
             return {"message": "No code found to refine", "refined_code": None}
         
-        # Extract feedback from other agents
-        feedback = []
+        # Extract insights from planner and researcher agents
+        planning_insights = []
+        research_insights = []
+        
         for response in other_agent_responses:
             agent_name = response.get("agent", "Unknown")
             agent_type = response.get("type", "")
             
-            # Don't include our own responses
-            if agent_name != self.name and agent_type != "code_generation_result":
-                feedback.append({
-                    "agent": agent_name,
-                    "content": response
-                })
+            # Skip our own responses
+            if agent_name == self.name or agent_type == "code_generation_result":
+                continue
+                
+            # Categorize feedback by agent type
+            if "planner" in agent_name.lower():
+                # Extract approach, algorithms, data structures etc.
+                approach = response.get("approach", [])
+                algorithms = response.get("algorithms", [])
+                data_structures = response.get("data_structures", [])
+                edge_cases = response.get("edge_cases", [])
+                performance = response.get("performance_considerations", [])
+                
+                if approach or algorithms or data_structures or edge_cases or performance:
+                    planning_insights.append({
+                        "approach": approach,
+                        "algorithms": algorithms,
+                        "data_structures": data_structures,
+                        "edge_cases": edge_cases,
+                        "performance": performance
+                    })
+            elif "research" in agent_name.lower():
+                # Extract libraries, best practices, code examples
+                libraries = response.get("libraries", [])
+                best_practices = response.get("best_practices", [])
+                code_examples = response.get("code_examples", [])
+                
+                if libraries or best_practices or code_examples:
+                    research_insights.append({
+                        "libraries": libraries,
+                        "best_practices": best_practices,
+                        "code_examples": code_examples
+                    })
+            else:
+                # Generic feedback from other types of agents
+                planning_insights.append({"content": response})
         
-        if not feedback:
+        if not planning_insights and not research_insights:
+            logger.warning("No relevant feedback found during collaboration")
             return {"message": "No relevant feedback found", "refined_code": None}
         
-        # Format a prompt to refine the code based on feedback
+        # Format planning insights
+        planning_text = ""
+        if planning_insights:
+            planning_text = "PLANNING INSIGHTS:\n"
+            for insight in planning_insights:
+                if "approach" in insight:
+                    approaches = insight.get("approach", [])
+                    if approaches:
+                        planning_text += "Approach:\n" + "\n".join([f"- {a}" for a in approaches]) + "\n\n"
+                
+                if "algorithms" in insight:
+                    algorithms = insight.get("algorithms", [])
+                    if algorithms:
+                        planning_text += "Algorithms:\n" + "\n".join([f"- {a}" for a in algorithms]) + "\n\n"
+                
+                if "data_structures" in insight:
+                    ds = insight.get("data_structures", [])
+                    if ds:
+                        planning_text += "Data Structures:\n" + "\n".join([f"- {d}" for d in ds]) + "\n\n"
+                
+                if "edge_cases" in insight:
+                    cases = insight.get("edge_cases", [])
+                    if cases:
+                        planning_text += "Edge Cases:\n" + "\n".join([f"- {c}" for c in cases]) + "\n\n"
+                
+                if "performance" in insight:
+                    perf = insight.get("performance", [])
+                    if perf:
+                        planning_text += "Performance Considerations:\n" + "\n".join([f"- {p}" for p in perf]) + "\n\n"
+                
+                if "content" in insight:
+                    planning_text += f"General feedback:\n{json.dumps(insight['content'], indent=2)}\n\n"
+        
+        # Format research insights
+        research_text = ""
+        if research_insights:
+            research_text = "RESEARCH INSIGHTS:\n"
+            for insight in research_insights:
+                if "libraries" in insight:
+                    libraries = insight.get("libraries", [])
+                    if libraries:
+                        research_text += "Recommended Libraries:\n"
+                        for lib in libraries:
+                            if isinstance(lib, dict):
+                                name = lib.get("name", "")
+                                desc = lib.get("description", "")
+                                usage = lib.get("usage_example", "")
+                                
+                                if name:
+                                    research_text += f"- {name}\n"
+                                    if desc:
+                                        research_text += f"  Description: {desc}\n"
+                                    if usage:
+                                        research_text += f"  Example: {usage}\n"
+                            elif isinstance(lib, str):
+                                research_text += f"- {lib}\n"
+                        research_text += "\n"
+                
+                if "best_practices" in insight:
+                    practices = insight.get("best_practices", [])
+                    if practices:
+                        research_text += "Best Practices:\n" + "\n".join([f"- {p}" for p in practices]) + "\n\n"
+                
+                if "code_examples" in insight:
+                    examples = insight.get("code_examples", [])
+                    if examples:
+                        research_text += "Code Examples:\n"
+                        for ex in examples:
+                            if isinstance(ex, dict):
+                                desc = ex.get("description", "")
+                                code_ex = ex.get("code", "")
+                                
+                                if desc:
+                                    research_text += f"Example: {desc}\n"
+                                if code_ex:
+                                    research_text += f"```{language}\n{code_ex}\n```\n\n"
+        
+        # Format a prompt to refine the code based on insights
         refine_prompt = f"""
-        Refine and optimize the following {language} code based on feedback from other agents:
+        You are an expert {language} developer. Refine and optimize the following code based on collaborative feedback from multiple AI agents:
         
         CURRENT CODE:
         ```{language}
         {code}
         ```
         
-        FEEDBACK:
-        {json.dumps(feedback, indent=2)}
+        {planning_text}
+        
+        {research_text}
         
         INSTRUCTIONS:
         1. Improve the code structure and organization
@@ -235,13 +347,49 @@ class CodeGeneratorAgent(Agent):
         3. Enhance error handling and edge case management
         4. Improve the readability and maintainability
         5. Fix any bugs or potential issues
-        6. Ensure the code follows clean code principles and OOP design patterns
+        6. Ensure the code follows clean code principles and design patterns
+        7. Incorporate the insights from planning and research agents
         
         Generate the improved code implementation. Format the code using proper indentation and organization.
+        Include useful comments to explain your changes and any complex logic.
         """
         
-        # Generate refined code using the AI service
-        refined_code = await self.ai_service.generate_code(refine_prompt, language)
+        logger.info("Generating refined code through agent collaboration")
+        
+        # Generate refined code using the AI service - CHANGED: generate_code to generate_text
+        refined_code = await self.ai_service.generate_text(refine_prompt)
+        
+        # Extract and clean the code from markdown code blocks if present
+        if isinstance(refined_code, str):
+            if "```" in refined_code:
+                # Find start of the first code block
+                start_marker = "```"
+                start_with_lang = "```" + language
+                
+                if start_with_lang in refined_code:
+                    # Code block with language specified: ```python
+                    start_idx = refined_code.find(start_with_lang) + len(start_with_lang)
+                elif start_marker in refined_code:
+                    # Generic code block: ```
+                    start_idx = refined_code.find(start_marker) + len(start_marker)
+                else:
+                    start_idx = 0
+                
+                # Find end of the code block
+                end_idx = refined_code.find("```", start_idx)
+                if end_idx > start_idx:
+                    # Extract code between markers and trim any leading/trailing whitespace
+                    refined_code = refined_code[start_idx:end_idx].strip()
+                else:
+                    # If we can't find the end marker, just clean the whole text as best we can
+                    refined_code = refined_code.replace("```" + language, "").replace("```", "").strip()
+            
+            # Additional cleanup for common AI-generated text patterns
+            lines = refined_code.split("\n")
+            if lines and lines[0].strip().startswith(language):
+                # Remove any "python" or language name line at the beginning
+                lines = lines[1:]
+            refined_code = "\n".join(lines)
         
         # Extract file structure from the refined code
         file_structure = await self._extract_file_structure(refined_code, language)

@@ -100,7 +100,9 @@ const SolvePage = () => {
   const steps = [
     'Submit Requirements',
     'Planning & Research',
-    'Code Generation'
+    'Code Generation',
+    'Test Execution',
+    'Code Refinement'
   ];
 
   // Handle language selection change
@@ -217,7 +219,6 @@ const SolvePage = () => {
           if (status === 'completed' || status === 'failed') {
             clearInterval(intervalId);
             setIsSubmitting(false);
-            setActiveStep(2); // Move to code generation step
             
             if (status === 'completed') {
               // Navigate to result page if task completed successfully
@@ -228,8 +229,28 @@ const SolvePage = () => {
               setActiveStep(0);
             }
           } else if (status === 'processing') {
-            // Update to code generation step if we're in processing
-            setActiveStep(1);
+            // Update steps based on the detailed status if available
+            if (statusResponse.data.detailed_status) {
+              const phase = statusResponse.data.detailed_status.phase;
+              
+              // Map phase to step number
+              if (phase === 'planning') {
+                setActiveStep(1); // Planning & Research step
+              } else if (phase === 'research') {
+                setActiveStep(1); // Still in Research phase (same UI step)
+              } else if (phase === 'code_generation') {
+                setActiveStep(2); // Code Generation step
+              } else if (phase === 'test_execution') {
+                setActiveStep(3); // Test Execution step
+              } else if (phase === 'refinement') {
+                setActiveStep(4); // Code Refinement step
+              } else if (phase === 'completed') {
+                setActiveStep(4); // Keep at final step until navigation
+              }
+            } else {
+              // Fallback to default behavior if detailed status is not available
+              setActiveStep(1); // Default to Planning & Research
+            }
           }
         } catch (err) {
           clearInterval(intervalId);
@@ -715,7 +736,11 @@ const SolvePage = () => {
               <Typography variant="body1" color="text.secondary">
                 {activeStep === 1 
                   ? 'Our agents are analyzing your problem, researching solutions, and planning the best approach...'
-                  : 'Generating clean, optimized code based on the plan and research...'}
+                  : activeStep === 2
+                  ? 'Generating clean, optimized code based on the plan and research...'
+                  : activeStep === 3
+                  ? 'Executing code against test cases to verify correctness...'
+                  : 'Refining code based on test results and agent collaboration...'}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                 <CircularProgress color="secondary" />
@@ -730,16 +755,16 @@ const SolvePage = () => {
             <Code sx={{ mr: 1, verticalAlign: 'middle' }} />
             Tips for Better Results
           </Typography>
-          <Typography variant="body1" paragraph>
+          <Typography variant="body1" paragraph sx={{ textAlign: 'left' }}>
             • Be as specific as possible about the requirements and constraints
           </Typography>
-          <Typography variant="body1" paragraph>
+          <Typography variant="body1" paragraph sx={{ textAlign: 'left' }}>
             • Include example inputs and expected outputs when relevant
           </Typography>
-          <Typography variant="body1" paragraph>
+          <Typography variant="body1" paragraph sx={{ textAlign: 'left' }}>
             • Mention any specific libraries or approaches you prefer
           </Typography>
-          <Typography variant="body1">
+          <Typography variant="body1" sx={{ textAlign: 'left' }}>
             • Include any performance requirements or limitations
           </Typography>
         </Paper>

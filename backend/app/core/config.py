@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     
     # OpenAI settings
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "gpt-4.1-nano"
     
     # External API settings
     SERPER_API_KEY: Optional[str] = None

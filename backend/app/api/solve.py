@@ -60,6 +60,7 @@ class TaskResponse(BaseModel):
     task_id: str
     status: TaskStatus
     created_at: str
+    detailed_status: Optional[Dict[str, Any]] = None
 
 class SolutionResponse(BaseModel):
     """Model for solution response."""
@@ -69,6 +70,7 @@ class SolutionResponse(BaseModel):
     explanation: Optional[str] = None
     code_files: Optional[List[Dict[str, str]]] = None
     error: Optional[str] = None
+    detailed_status: Optional[Dict[str, Any]] = None
 
 @router.post("/", response_model=TaskResponse)
 async def solve_problem(request: Request, background_tasks: BackgroundTasks, data: SolveRequest = Body(...)):
@@ -98,7 +100,11 @@ async def solve_problem(request: Request, background_tasks: BackgroundTasks, dat
             "solution": None,
             "explanation": None,
             "code_files": None,
-            "error": None
+            "error": None,
+            "detailed_status": {
+                "phase": "planning",
+                "progress": 0
+            }
         }
         
         # Process in background
@@ -113,7 +119,8 @@ async def solve_problem(request: Request, background_tasks: BackgroundTasks, dat
         return TaskResponse(
             task_id=task_id,
             status=TaskStatus.PENDING,
-            created_at=tasks[task_id]["created_at"]
+            created_at=tasks[task_id]["created_at"],
+            detailed_status=tasks[task_id]["detailed_status"]
         )
     
     except Exception as e:
@@ -149,7 +156,8 @@ async def get_solution(request: Request, task_id: str):
             solution=task.get("solution"),
             explanation=task.get("explanation"),
             code_files=task.get("code_files"),
-            error=task.get("error")
+            error=task.get("error"),
+            detailed_status=task.get("detailed_status")
         )
     
     except HTTPException:
@@ -229,11 +237,21 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         # Initialize orchestrator
         orchestrator = AgentOrchestrator()
         
+        # Set up phase listener to update detailed status
+        def phase_update_callback(phase: str, progress: Optional[float] = None):
+            if task_id in tasks:
+                tasks[task_id]["detailed_status"] = {
+                    "phase": phase,
+                    "progress": progress or 0
+                }
+                logger.info(f"Task {task_id} phase updated: {phase}")
+        
         # Solve the problem
         solution = await orchestrator.solve_problem(
             requirements=requirements,
             language=language,
-            additional_context=additional_context
+            additional_context=additional_context,
+            phase_callback=phase_update_callback
         )
         
         # Update task with solution
@@ -241,7 +259,8 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
             "status": TaskStatus.COMPLETED,
             "solution": solution.get("solution"),
             "explanation": solution.get("explanation"),
-            "code_files": solution.get("code_files")
+            "code_files": solution.get("code_files"),
+            "detailed_status": {"phase": "completed", "progress": 100}
         })
         
         logger.info(f"Task {task_id} completed successfully")
@@ -251,5 +270,6 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         # Update task with error
         tasks[task_id].update({
             "status": TaskStatus.FAILED,
-            "error": str(e)
+            "error": str(e),
+            "detailed_status": {"phase": "failed", "progress": 0}
         })
