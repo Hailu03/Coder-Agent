@@ -20,21 +20,21 @@ app = FastAPI(
 )
 
 # Debug middleware to log all requests
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.info(f"Request headers: {request.headers}")
-    response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
-    return response
+# @app.middleware("http")
+# async def log_requests(request: Request, call_next):
+#     logger.info(f"Request: {request.method} {request.url}")
+#     logger.info(f"Request headers: {request.headers}")
+#     response = await call_next(request)
+#     logger.info(f"Response status: {response.status_code}")
+#     return response
 
 # Add CORS middleware with permissive settings for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=settings.cors_origins,  # Sử dụng giá trị từ cấu hình
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["POST", "GET", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"]
 )
 
 # Include API router

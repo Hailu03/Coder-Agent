@@ -13,8 +13,8 @@ api_router = APIRouter()
 # For example: api_router.include_router(user_router, prefix="/users", tags=["users"])
 
 # Import and include routes to avoid circular imports
-from . import solve
-from . import settings as settings_router
+from .v1 import solve
+from .v1 import settings as settings_router
 
 # Include the solve routes
 api_router.include_router(solve.router, prefix="/solve", tags=["solve"])

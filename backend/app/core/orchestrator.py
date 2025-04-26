@@ -109,23 +109,24 @@ class AgentOrchestrator:
             code_result = await self.code_generator_agent.process(code_gen_input)
             
             # Generate test cases based on requirements and code analysis
-            test_cases = await self._generate_test_cases(full_requirements, code_result.get("code", ""), clean_lang)
-            
+            test_cases_code = await self._generate_test_cases_code(full_requirements, code_result.get("code", ""), clean_lang)
+    
             # Update phase status
             if phase_callback:
                 phase_callback("test_execution", 70)
             
             # Phase 4: Test Execution 
             test_execution_result = None
-            if test_cases:
-                logger.info(f"Phase 4: Executing {len(test_cases)} test cases")
+            if test_cases_code:
+                logger.info(f"Phase 4: Executing test cases")
                 test_input = {
-                    "code": code_result.get("code", ""),
+                    "code": test_cases_code,
                     "language": clean_lang,
-                    "test_cases": test_cases
                 }
                 
                 test_execution_result = await self.test_executor_agent.process(test_input)
+                logger.info(f"Test execution summary: {test_execution_result.get('summary', '')}")
+                logger.info(f"Test Exection Result: {test_execution_result.get('result','')}")
                 logger.info(f"Test execution completed: {test_execution_result.get('passed', False)}")
             
             # Prepare agent responses for collaboration
@@ -176,12 +177,15 @@ class AgentOrchestrator:
                 file_structure = refined_file_structure
                 
                 # If tests failed initially, run tests again on the refined code
-                if test_execution_result and not test_execution_result.get("passed", False) and test_cases:
+                if test_execution_result and not test_execution_result.get("passed", False):
                     logger.info("Re-running tests on refined code")
+                    
+                    # Generate new test cases for the refined code
+                    refined_test_cases_code = await self._generate_test_cases_code(full_requirements, code, clean_lang)
+                    
                     test_input = {
-                        "code": code,
-                        "language": clean_lang,
-                        "test_cases": test_cases
+                        "code": refined_test_cases_code,
+                        "language": clean_lang
                     }
                     
                     test_execution_result = await self.test_executor_agent.process(test_input)
@@ -233,8 +237,8 @@ class AgentOrchestrator:
                 "solution": {}
             }
     
-    async def _generate_test_cases(self, requirements: str, code: str, language: str) -> List[Dict[str, Any]]:
-        """Generate comprehensive test cases for the given problem and code.
+    async def _generate_test_cases_code(self, requirements: str, code: str, language: str) -> str:
+        """Generate a complete test script with solution code and test cases.
         
         Args:
             requirements: The problem requirements 
@@ -242,118 +246,117 @@ class AgentOrchestrator:
             language: The programming language
             
         Returns:
-            List of test cases with varying difficulty levels
+            A complete test script with solution code and test cases
         """
+        logger.info(f"Generating test cases for the {language} code solution")
+
         # First extract any explicit test cases from the requirements
         test_cases = self._extract_test_cases_from_requirements(requirements)
+        logger.info(f"Test cases extracted:\n {test_cases}")
         
-        # If we have fewer than 3 test cases, generate additional ones
-        if len(test_cases) < 3:
-            try:
-                # Prepare a prompt for the AI to generate additional test cases with varying difficulty
-                prompt = f"""
-                Based on the following problem requirements and solution code, generate {5 - len(test_cases)} additional test cases with varying difficulty (easy, medium, hard).
+        try:
+            # Prepare language-specific instructions for testing
+            if language.lower() in ["python", "py"]:
+                test_framework = "unittest framework"
+                file_description = "Python script"
+            elif language.lower() in ["javascript", "js", "node", "nodejs"]:
+                test_framework = "Jest or Mocha testing framework"
+                file_description = "JavaScript file"
+            elif language.lower() == "java":
+                test_framework = "JUnit framework" 
+                file_description = "Java file"
+            elif language.lower() in ["c", "cpp", "c++"]:
+                test_framework = "testing code using assertions"
+                file_description = f"{language} file"
+            else:
+                # Default to Python for unknown languages
+                test_framework = "testing framework appropriate for the language"
+                file_description = f"{language} code file"
                 
-                REQUIREMENTS:
-                {requirements}
+            # Prepare a prompt for the AI to generate a complete test script
+            prompt = f"""
+            Based on the following problem requirements and solution code, create a complete executable test script.
+            
+            REQUIREMENTS:
+            {requirements}
+            
+            CODE SOLUTION:
+            ```{language}
+            {code}
+            ```
+            
+            Create a SINGLE self-contained {file_description} that:
+            1. First defines the solution code exactly as provided above
+            2. Then defines a {test_framework} to test the solution 
+            3. Creates test cases including the following extracted from requirements: 
+            {test_cases}
+            4. Adds additional test cases to cover edge cases and special situations
+            5. Has a main section that runs all tests and reports success/failure for each test
+            6. Prints clear output showing test results, expected vs actual values, and any errors
+            
+            The output should be formatted to help identify:
+            - Which test failed
+            - What was expected vs what was received
+            - Helpful error messages explaining potential bugs
+            
+            The script should be 100% runnable as-is with no dependencies outside the standard library.
+            
+            Format your response as a single {file_description} with no additional text or markdown.
+            """
+            
+            # Generate the complete test script using AI service
+            complete_test_script = await self.ai_service.generate_text(prompt)
+            
+            # Clean up the response to ensure it's just the code
+            markdown_pattern = f"```{language}"
+            if markdown_pattern.lower() in complete_test_script.lower():
+                # Look for language-specific code block
+                start_idx = re.search(f"```{language}", complete_test_script, re.IGNORECASE)
+                if start_idx:
+                    start = start_idx.end()
+                else:
+                    start = complete_test_script.find("```") + 3
+            elif "```" in complete_test_script:
+                start = complete_test_script.find("```") + 3
+            else:
+                start = 0
                 
-                CODE SOLUTION:
-                ```{language}
-                {code}
-                ```
+            end = complete_test_script.rfind("```")
+            if end != -1:
+                complete_test_script = complete_test_script[start:end].strip()
+            else:
+                complete_test_script = complete_test_script[start:].strip()
                 
-                For each test case, provide:
-                1. A brief description of what the test case is checking
-                2. An input value
-                3. The expected output
-                4. The difficulty level (easy, medium, or hard)
-                
-                Make sure to include edge cases, boundary conditions, and special cases.
-                Format each test case as a JSON object with fields: "description", "input", "expected_output", and "difficulty".
-                """
-                
-                # Generate test cases using AI service
-                response = await self.ai_service.generate_structured_output(
-                    prompt=prompt,
-                    output_schema={
-                        "type": "object",
-                        "properties": {
-                            "test_cases": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "description": {"type": "string"},
-                                        "input": {"type": "string"},
-                                        "expected_output": {"type": "string"},
-                                        "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}
-                                    },
-                                    "required": ["description", "input", "expected_output", "difficulty"]
-                                }
-                            }
-                        },
-                        "required": ["test_cases"]
-                    }
-                )
-                
-                # Add the generated test cases to our list
-                if response and "test_cases" in response:
-                    for idx, test_case in enumerate(response["test_cases"]):
-                        test_cases.append({
-                            "description": f"{test_case['description']} (Difficulty: {test_case['difficulty']})",
-                            "input": test_case["input"],
-                            "expected_output": test_case["expected_output"]
-                        })
-            except Exception as e:
-                logger.error(f"Error generating additional test cases: {str(e)}")
-        
-        # Ensure we have at least one test case
-        if not test_cases:
-            # Add a simple test case as fallback
-            test_cases.append({
-                "description": "Basic functionality test",
-                "input": "Test input",
-                "expected_output": "Expected output"
-            })
-        
-        return test_cases
+            return complete_test_script
+
+        except Exception as e:
+            logger.error(f"Error generating complete test script: {str(e)}")
+            # Return a basic test with just the solution code
+            return f"// Solution code for {language}\n{code}\n\n// Basic test runner\nconsole.log('Error generating test cases')" if language.lower() in ["javascript", "js"] else f"# Solution code\n{code}\n\n# Basic test runner\nif __name__ == '__main__':\n    print('Error generating test cases')"
     
     def _extract_test_cases_from_requirements(self, requirements: str) -> List[Dict[str, Any]]:
-        """Extract test cases from requirements text.
-        
-        Args:
-            requirements: The problem requirements text
-            
-        Returns:
-            List of extracted test cases
-        """
+        logger.info("Extracting test cases from requirements")
         test_cases = []
         
-        # Look for common test case patterns in the requirements
-        
         # Pattern 1: "Example: Input: X Output: Y" format
-        example_pattern = r"Example[s]?[\s\d]*:[\s\n]*(Input[\s\n]*:[\s\n]*(.+?)[\s\n]*Output[\s\n]*:[\s\n]*(.+?)(?=Example|$))"
+        example_pattern = r"Example[s]?[\s\d]*:[\s\n]*(Input[\s\n]*:[\s\n]*(.+?)[\s\n]*Output[\s\n]*:[\s\n]*(.+?)(?=Example|Constraint|$))"
         example_matches = re.finditer(example_pattern, requirements, re.DOTALL | re.IGNORECASE)
         
         for i, match in enumerate(example_matches):
+            # Clean the output - remove any trailing constraints or explanations
+            raw_output = match.group(3).strip()
+            
+            # First split by Constraint
+            clean_output = re.split(r"\s*\n+\s*Constraint", raw_output, flags=re.IGNORECASE)[0].strip()
+            
+            # Then also split by Explanation
+            clean_output = re.split(r"\s*\n+\s*Explanation:", clean_output, flags=re.IGNORECASE)[0].strip()
+            
             test_cases.append({
                 "description": f"Example {i+1}",
                 "input": match.group(2).strip(),
-                "expected_output": match.group(3).strip()
+                "expected_output": clean_output
             })
-        
-        # Pattern 2: "Test Case: X => Y" format
-        test_case_pattern = r"Test Case[\s\d]*:[\s\n]*(.+?)[\s\n]*=>[\s\n]*(.+?)[\s\n]*(?=Test Case|$)"
-        test_case_matches = re.finditer(test_case_pattern, requirements, re.DOTALL | re.IGNORECASE)
-        
-        for i, match in enumerate(test_case_matches):
-            test_cases.append({
-                "description": f"Test Case {i+1}",
-                "input": match.group(1).strip(),
-                "expected_output": match.group(2).strip()
-            })
-        
-        # Pattern 3: Table format with "Input" and "Output" columns
-        # This is more complex and might need a more sophisticated parser in a real implementation
-        
+            logger.info(f"Extracted test case {i+1}: {test_cases[-1]}")
+    
         return test_cases
