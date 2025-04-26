@@ -16,7 +16,7 @@ from ..utils import clean_language_name, format_code_with_language
 logger = logging.getLogger("agents.code_generator")
 
 
-class CodeGeneratorAgent(Agent):
+class DeveloperAgent(Agent):
     """Agent responsible for generating clean, optimized code."""
     
     def __init__(self, ai_service: AIService):
@@ -25,7 +25,7 @@ class CodeGeneratorAgent(Agent):
         Args:
             ai_service: AI service for interacting with language models
         """
-        super().__init__(name="CodeGeneratorAgent", ai_service=ai_service)
+        super().__init__(name="DeveloperAgent", ai_service=ai_service)
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate code based on problem requirements, plan, and research.
@@ -205,6 +205,7 @@ class CodeGeneratorAgent(Agent):
         # Extract insights from planner and researcher agents
         planning_insights = []
         research_insights = []
+        test_insights = []
         
         for response in other_agent_responses:
             agent_name = response.get("agent", "Unknown")
@@ -243,11 +244,23 @@ class CodeGeneratorAgent(Agent):
                         "best_practices": best_practices,
                         "code_examples": code_examples
                     })
+            elif "tester" in agent_name.lower():
+                test_results = response.get("output", [])
+                test_summary = response.get("summary", [])
+                time = response.get("time", [])
+                error = response.get("error", [])
+
+                test_insights.append({
+                    "test_results": test_results,
+                    "test_summary": test_summary,
+                    "execution_time": time,
+                    "error": error
+                })
             else:
                 # Generic feedback from other types of agents
                 planning_insights.append({"content": response})
         
-        if not planning_insights and not research_insights:
+        if not planning_insights and not research_insights and not test_insights:
             logger.warning("No relevant feedback found during collaboration")
             return {"message": "No relevant feedback found", "refined_code": None}
         
@@ -328,6 +341,22 @@ class CodeGeneratorAgent(Agent):
                                 if code_ex:
                                     research_text += f"```{language}\n{code_ex}\n```\n\n"
         
+        # Format test insights
+        test_text = f"""TEST INSIGHTS:
+        Test Results:
+        {test_insights[0].get('test_results', '') if test_insights else 'No test results available'}
+
+        Analyze Test Results:
+        {test_insights[0].get('summary', '') if test_insights else 'No summary available'}
+
+        Execution Time:
+        {test_insights[0].get('execution_time', '') if test_insights else 'No execution time available'}
+
+        Error when executing:
+        {test_insights[0].get('error', '') if test_insights else 'No error information available'}
+        """
+
+
         # Format a prompt to refine the code based on insights
         refine_prompt = f"""
         You are an expert {language} developer. Refine and optimize the following code based on collaborative feedback from multiple AI agents:
@@ -340,6 +369,8 @@ class CodeGeneratorAgent(Agent):
         {planning_text}
         
         {research_text}
+
+        {test_text}
         
         INSTRUCTIONS:
         1. Improve the code structure and organization

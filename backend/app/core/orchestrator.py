@@ -12,8 +12,8 @@ from typing import Dict, Any, List, Optional, Callable
 
 from ..agents.planner import PlannerAgent
 from ..agents.researcher import ResearchAgent
-from ..agents.code_generator import CodeGeneratorAgent
-from ..agents.test_executor import TestExecutionAgent
+from ..agents.developer import DeveloperAgent
+from ..agents.tester import TesterAgent
 from ..services.ai_service import get_ai_service
 from ..utils import clean_language_name
 from ..models.models import Solution
@@ -33,8 +33,8 @@ class AgentOrchestrator:
         # Initialize specialized agents
         self.planner_agent = PlannerAgent(self.ai_service)
         self.research_agent = ResearchAgent(self.ai_service)
-        self.code_generator_agent = CodeGeneratorAgent(self.ai_service)
-        self.test_executor_agent = TestExecutionAgent(self.ai_service)
+        self.code_generator_agent = DeveloperAgent(self.ai_service)
+        self.test_executor_agent = TesterAgent(self.ai_service)
         
         logger.info("Agent Orchestrator initialized")
     
@@ -109,7 +109,7 @@ class AgentOrchestrator:
             code_result = await self.code_generator_agent.process(code_gen_input)
             
             # Generate test cases based on requirements and code analysis
-            test_cases_code = await self._generate_test_cases_code(full_requirements, code_result.get("code", ""), clean_lang)
+            test_cases_code = await self.test_executor_agent._generate_test_cases_code(full_requirements, code_result.get("code", ""), clean_lang)
     
             # Update phase status
             if phase_callback:
@@ -125,9 +125,6 @@ class AgentOrchestrator:
                 }
                 
                 test_execution_result = await self.test_executor_agent.process(test_input)
-                logger.info(f"Test execution summary: {test_execution_result.get('summary', '')}")
-                logger.info(f"Test Exection Result: {test_execution_result.get('result','')}")
-                logger.info(f"Test execution completed: {test_execution_result.get('passed', False)}")
             
             # Prepare agent responses for collaboration
             agent_responses = [
@@ -142,7 +139,7 @@ class AgentOrchestrator:
                     **research_result
                 },
                 {
-                    "agent": "CodeGeneratorAgent",
+                    "agent": "DeveloperAgent",
                     "type": "code_generation_result",
                     "code": code_result.get("code", ""),
                     "language": clean_lang,
@@ -153,55 +150,94 @@ class AgentOrchestrator:
             # Add test execution results if available
             if test_execution_result:
                 agent_responses.append({
-                    "agent": "TestExecutionAgent",
+                    "agent": "TesterAgent",
                     "type": "test_execution_result",
                     **test_execution_result
                 })
-            
-            # Update phase status
-            if phase_callback:
-                phase_callback("refinement", 85)
-            
-            # Phase 5: Refinement (Collaboration between agents to refine the code)
-            logger.info("Phase 5: Refining code through agent collaboration")
-            collaboration_result = await self.code_generator_agent.collaborate(agent_responses)
-            
-            # Use refined code if available, otherwise use the original code
-            if collaboration_result and collaboration_result.get("refined_code"):
-                logger.info("Using refined code from collaboration phase")
-                refined_code = collaboration_result.get("refined_code", "")
-                refined_file_structure = collaboration_result.get("file_structure", code_result.get("file_structure", {}))
-                
-                # Update code result with refined code
-                code = refined_code
-                file_structure = refined_file_structure
-                
-                # If tests failed initially, run tests again on the refined code
-                if test_execution_result and not test_execution_result.get("passed", False):
-                    logger.info("Re-running tests on refined code")
-                    
-                    # Generate new test cases for the refined code
-                    refined_test_cases_code = await self._generate_test_cases_code(full_requirements, code, clean_lang)
-                    
-                    test_input = {
-                        "code": refined_test_cases_code,
-                        "language": clean_lang
-                    }
-                    
-                    test_execution_result = await self.test_executor_agent.process(test_input)
-                    logger.info(f"Refined code test results: {test_execution_result.get('passed', False)}")
-            else:
-                logger.info("Using original code (collaboration did not produce refined code)")
+
+            # Nếu test đầu đã pass thì bỏ qua refine
+            if test_execution_result and test_execution_result.get('passed', False):
                 code = code_result.get("code", "")
                 file_structure = code_result.get("file_structure", {})
-            
-            # Unescape any HTML entities in the code
-            if code:
-                code = html.unescape(code)  # Convert any HTML entities back to their original characters
-            
-            # Update phase status
-            if phase_callback:
-                phase_callback("completed", 100)
+                if phase_callback:
+                    phase_callback("completed", 100)
+            else:
+                # Update phase status
+                if phase_callback:
+                    phase_callback("refinement", 85)
+                # Thêm cơ chế tự động refine code khi test không pass
+                max_refine_attempts = 3  # Số lần refine tối đa
+                refine_count = 0
+                code = code_result.get("code", "")
+                file_structure = code_result.get("file_structure", {})
+                while refine_count < max_refine_attempts:
+                    # Phase 5: Refinement (Collaboration between agents to refine the code)
+                    if refine_count == 0:
+                        logger.info("Phase 5: Refining code through agent collaboration")
+                    else:
+                        logger.info(f"Phase 5: Refine attempt {refine_count + 1}/{max_refine_attempts}")
+                        if phase_callback:
+                            phase_callback(f"refinement_{refine_count + 1}", 85 + (refine_count * 5))
+                    # Cập nhật code trong agent_responses nếu đã có refinement trước đó
+                    if refine_count > 0:
+                        for i, response in enumerate(agent_responses):
+                            if response.get("type") == "code_generation_result":
+                                agent_responses[i]["code"] = code
+                    try:
+                        collaboration_result = await self.code_generator_agent.collaborate(agent_responses)
+                        # Use refined code if available
+                        if collaboration_result and collaboration_result.get("refined_code"):
+                            logger.info(f"Using refined code from collaboration attempt {refine_count + 1}")
+                            refined_code = collaboration_result.get("refined_code", "")
+                            refined_file_structure = collaboration_result.get("file_structure", file_structure)
+                            # Update code result with refined code
+                            code = refined_code
+                            file_structure = refined_file_structure
+                            logger.info(f"Re-running tests on refined code (attempt {refine_count + 1})")
+                            # Generate new test cases for the refined code
+                            refined_test_cases_code = await self.test_executor_agent._generate_test_cases_code(
+                                full_requirements, code, clean_lang
+                            )
+                            test_input = {
+                                "code": refined_test_cases_code,
+                                "language": clean_lang
+                            }
+                            test_execution_result = await self.test_executor_agent.process(test_input)
+                            test_passed = test_execution_result.get('passed', False)
+                            logger.info(f"Refined code test results (attempt {refine_count + 1}): {test_passed}")
+                            # Thêm kết quả test mới vào agent_responses để refine lần tiếp theo nếu cần
+                            for i, response in enumerate(agent_responses):
+                                if response.get("type") == "test_execution_result":
+                                    agent_responses[i] = {
+                                        "agent": "TesterAgent",
+                                        "type": "test_execution_result",
+                                        **test_execution_result
+                                    }
+                                    break
+                            else:
+                                # Nếu không có test_execution_result trước đó, thêm mới
+                                agent_responses.append({
+                                    "agent": "TesterAgent",
+                                    "type": "test_execution_result",
+                                    **test_execution_result
+                                })
+                            # Nếu tests đã pass, thoát khỏi vòng lặp
+                            if test_passed:
+                                logger.info(f"All tests passed after {refine_count + 1} refinement attempts")
+                                break
+                        else:
+                            logger.info(f"Refinement attempt {refine_count + 1} did not produce new code")
+                            break
+                        refine_count += 1
+                    except Exception as e:
+                        logger.error(f"Error during refinement attempt {refine_count + 1}: {str(e)}")
+                        break
+                # Unescape any HTML entities in the code
+                if code:
+                    code = html.unescape(code)  # Convert any HTML entities back to their original characters
+                # Update phase status
+                if phase_callback:
+                    phase_callback("completed", 100)
             
             # Compile the final solution
             solution = {
@@ -236,103 +272,6 @@ class AgentOrchestrator:
                 "error": f"Error generating solution: {str(e)}",
                 "solution": {}
             }
-    
-    async def _generate_test_cases_code(self, requirements: str, code: str, language: str) -> str:
-        """Generate a complete test script with solution code and test cases.
-        
-        Args:
-            requirements: The problem requirements 
-            code: The generated code solution
-            language: The programming language
-            
-        Returns:
-            A complete test script with solution code and test cases
-        """
-        logger.info(f"Generating test cases for the {language} code solution")
-
-        # First extract any explicit test cases from the requirements
-        test_cases = self._extract_test_cases_from_requirements(requirements)
-        logger.info(f"Test cases extracted:\n {test_cases}")
-        
-        try:
-            # Prepare language-specific instructions for testing
-            if language.lower() in ["python", "py"]:
-                test_framework = "unittest framework"
-                file_description = "Python script"
-            elif language.lower() in ["javascript", "js", "node", "nodejs"]:
-                test_framework = "Jest or Mocha testing framework"
-                file_description = "JavaScript file"
-            elif language.lower() == "java":
-                test_framework = "JUnit framework" 
-                file_description = "Java file"
-            elif language.lower() in ["c", "cpp", "c++"]:
-                test_framework = "testing code using assertions"
-                file_description = f"{language} file"
-            else:
-                # Default to Python for unknown languages
-                test_framework = "testing framework appropriate for the language"
-                file_description = f"{language} code file"
-                
-            # Prepare a prompt for the AI to generate a complete test script
-            prompt = f"""
-            Based on the following problem requirements and solution code, create a complete executable test script.
-            
-            REQUIREMENTS:
-            {requirements}
-            
-            CODE SOLUTION:
-            ```{language}
-            {code}
-            ```
-            
-            Create a SINGLE self-contained {file_description} that:
-            1. First defines the solution code exactly as provided above
-            2. Then defines a {test_framework} to test the solution 
-            3. Creates test cases including the following extracted from requirements: 
-            {test_cases}
-            4. Adds additional test cases to cover edge cases and special situations
-            5. Has a main section that runs all tests and reports success/failure for each test
-            6. Prints clear output showing test results, expected vs actual values, and any errors
-            
-            The output should be formatted to help identify:
-            - Which test failed
-            - What was expected vs what was received
-            - Helpful error messages explaining potential bugs
-            
-            The script should be 100% runnable as-is with no dependencies outside the standard library.
-            
-            Format your response as a single {file_description} with no additional text or markdown.
-            """
-            
-            # Generate the complete test script using AI service
-            complete_test_script = await self.ai_service.generate_text(prompt)
-            
-            # Clean up the response to ensure it's just the code
-            markdown_pattern = f"```{language}"
-            if markdown_pattern.lower() in complete_test_script.lower():
-                # Look for language-specific code block
-                start_idx = re.search(f"```{language}", complete_test_script, re.IGNORECASE)
-                if start_idx:
-                    start = start_idx.end()
-                else:
-                    start = complete_test_script.find("```") + 3
-            elif "```" in complete_test_script:
-                start = complete_test_script.find("```") + 3
-            else:
-                start = 0
-                
-            end = complete_test_script.rfind("```")
-            if end != -1:
-                complete_test_script = complete_test_script[start:end].strip()
-            else:
-                complete_test_script = complete_test_script[start:].strip()
-                
-            return complete_test_script
-
-        except Exception as e:
-            logger.error(f"Error generating complete test script: {str(e)}")
-            # Return a basic test with just the solution code
-            return f"// Solution code for {language}\n{code}\n\n// Basic test runner\nconsole.log('Error generating test cases')" if language.lower() in ["javascript", "js"] else f"# Solution code\n{code}\n\n# Basic test runner\nif __name__ == '__main__':\n    print('Error generating test cases')"
     
     def _extract_test_cases_from_requirements(self, requirements: str) -> List[Dict[str, Any]]:
         logger.info("Extracting test cases from requirements")
