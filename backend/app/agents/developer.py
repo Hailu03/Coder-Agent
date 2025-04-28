@@ -5,6 +5,7 @@ This module defines the Code Generator Agent that produces clean, optimized code
 
 import json
 import logging
+import re
 from typing import Dict, List, Any, Optional
 from .base import Agent
 from ..core.config import settings
@@ -38,15 +39,25 @@ class DeveloperAgent(Agent):
         """
         requirements = input_data.get("requirements", "")
         language = clean_language_name(input_data.get("language", "python"))
+        
+        # Đảm bảo plan là dictionary
         plan = input_data.get("plan", {})
+        if not isinstance(plan, dict):
+            logger.warning(f"Plan is not a dictionary, converting to empty dict: {type(plan)}")
+            plan = {}
+        
+        # Đảm bảo research là dictionary
         research = input_data.get("research", {})
+        if not isinstance(research, dict):
+            logger.warning(f"Research is not a dictionary, converting to empty dict: {type(research)}")
+            research = {}
         
         logger.info(f"Generating code solution in {language}")
         
         # Extract key elements from the plan
         problem_analysis = plan.get("problem_analysis", "")
         approach = plan.get("approach", [])
-        approach_text = "\n".join([f"- {step}" for step in approach])
+        approach_text = "\n".join([f"- {step}" for step in approach]) if isinstance(approach, list) else approach
         recommended_libraries = plan.get("recommended_libraries", [])
         algorithms = plan.get("algorithms", [])
         data_structures = plan.get("data_structures", [])
@@ -55,35 +66,60 @@ class DeveloperAgent(Agent):
         
         # Extract research findings
         libraries_info = research.get("libraries", [])
-        algorithms_info = research.get("algorithms", [])
         best_practices = research.get("best_practices", [])
         code_examples = research.get("code_examples", [])
         
         # Compile best practices
-        best_practices_text = "\n".join([f"- {practice}" for practice in best_practices])
+        if isinstance(best_practices, list):
+            best_practices_text = "\n".join([f"- {practice}" for practice in best_practices])
+        else:
+            best_practices_text = str(best_practices)
         
         # Compile libraries information
         libraries_text = ""
-        for lib in libraries_info:
-            lib_name = lib.get("name", "")
-            lib_description = lib.get("description", "")
-            lib_usage = lib.get("usage_example", "")
-            
-            if lib_name:
+        if isinstance(libraries_info, list):
+            for lib in libraries_info:
+                if isinstance(lib, dict):
+                    lib_name = lib.get("name", "")
+                    lib_description = lib.get("description", "")
+                    lib_usage = lib.get("usage_example", "")
+                    
+                    if lib_name:
+                        libraries_text += f"\n## {lib_name}\n"
+                        if lib_description:
+                            libraries_text += f"{lib_description}\n"
+                        if lib_usage:
+                            libraries_text += f"Example usage:\n{lib_usage}\n"
+                elif isinstance(lib, str):
+                    libraries_text += f"\n## {lib}\n"
+        elif isinstance(libraries_info, dict):
+            for lib_name, lib_data in libraries_info.items():
                 libraries_text += f"\n## {lib_name}\n"
-                if lib_description:
-                    libraries_text += f"{lib_description}\n"
-                if lib_usage:
-                    libraries_text += f"Example usage:\n{lib_usage}\n"
+                if isinstance(lib_data, dict):
+                    lib_description = lib_data.get("description", "")
+                    if lib_description:
+                        libraries_text += f"{lib_description}\n"
+                    
+                    examples = lib_data.get("examples", [])
+                    if examples and isinstance(examples, list):
+                        for ex in examples:
+                            if isinstance(ex, dict):
+                                ex_code = ex.get("code", "")
+                                if ex_code:
+                                    libraries_text += f"Example usage:\n{ex_code}\n"
         
         # Compile examples from research
         examples_text = ""
-        for example in code_examples:
-            example_desc = example.get("description", "")
-            example_code = example.get("code", "")
-            
-            if example_desc and example_code:
-                examples_text += f"\n## {example_desc}\n{example_code}\n"
+        if isinstance(code_examples, list):
+            for example in code_examples:
+                if isinstance(example, dict):
+                    example_desc = example.get("description", "")
+                    example_code = example.get("code", "")
+                    
+                    if example_desc and example_code:
+                        examples_text += f"\n## {example_desc}\n{example_code}\n"
+                elif isinstance(example, str):
+                    examples_text += f"\n{example}\n"
         
         prompt = f"""
         You are an expert {language} developer. I need you to generate clean, optimized code for the following problem:
@@ -98,22 +134,22 @@ class DeveloperAgent(Agent):
         {approach_text}
         
         KEY LIBRARIES TO USE:
-        {', '.join(recommended_libraries) if recommended_libraries else 'No specific libraries required'}
+        {', '.join(recommended_libraries) if isinstance(recommended_libraries, list) else str(recommended_libraries)}
         
         KEY ALGORITHMS:
-        {', '.join(algorithms) if algorithms else 'No specific algorithms required'}
+        {', '.join(algorithms) if isinstance(algorithms, list) else str(algorithms)}
         
         KEY DATA STRUCTURES:
-        {', '.join(data_structures) if data_structures else 'No specific data structures required'}
+        {', '.join(data_structures) if isinstance(data_structures, list) else str(data_structures)}
         
         EDGE CASES TO HANDLE:
-        {', '.join(edge_cases) if edge_cases else 'No specific edge cases identified'}
+        {', '.join(edge_cases) if isinstance(edge_cases, list) else str(edge_cases)}
         
         PERFORMANCE CONSIDERATIONS:
-        {', '.join(performance_considerations) if performance_considerations else 'No specific performance considerations identified'}
+        {', '.join(performance_considerations) if isinstance(performance_considerations, list) else str(performance_considerations)}
         
         BEST PRACTICES TO FOLLOW:
-        {best_practices_text if best_practices else 'Follow standard coding best practices for ' + language}
+        {best_practices_text if best_practices_text else 'Follow standard coding best practices for ' + language}
         
         LIBRARIES INFORMATION:
         {libraries_text if libraries_text else 'No specific library information available'}
@@ -390,37 +426,7 @@ class DeveloperAgent(Agent):
         # Generate refined code using the AI service - CHANGED: generate_code to generate_text
         refined_code = await self.ai_service.generate_text(refine_prompt)
         
-        # Extract and clean the code from markdown code blocks if present
-        if isinstance(refined_code, str):
-            if "```" in refined_code:
-                # Find start of the first code block
-                start_marker = "```"
-                start_with_lang = "```" + language
-                
-                if start_with_lang in refined_code:
-                    # Code block with language specified: ```python
-                    start_idx = refined_code.find(start_with_lang) + len(start_with_lang)
-                elif start_marker in refined_code:
-                    # Generic code block: ```
-                    start_idx = refined_code.find(start_marker) + len(start_marker)
-                else:
-                    start_idx = 0
-                
-                # Find end of the code block
-                end_idx = refined_code.find("```", start_idx)
-                if end_idx > start_idx:
-                    # Extract code between markers and trim any leading/trailing whitespace
-                    refined_code = refined_code[start_idx:end_idx].strip()
-                else:
-                    # If we can't find the end marker, just clean the whole text as best we can
-                    refined_code = refined_code.replace("```" + language, "").replace("```", "").strip()
-            
-            # Additional cleanup for common AI-generated text patterns
-            lines = refined_code.split("\n")
-            if lines and lines[0].strip().startswith(language):
-                # Remove any "python" or language name line at the beginning
-                lines = lines[1:]
-            refined_code = "\n".join(lines)
+        refined_code = self.strip_markdown_code_block(refined_code)
         
         # Extract file structure from the refined code
         file_structure = await self._extract_file_structure(refined_code, language)
@@ -432,6 +438,23 @@ class DeveloperAgent(Agent):
             "agent": self.name,
             "language": language
         }
+    
+    def strip_markdown_code_block(self, text: str) -> str:
+        """Remove markdown code block formatting from text.
+        
+        Args:
+            text: The text that may contain markdown code blocks
+            
+        Returns:
+            The text with markdown code block formatting removed
+        """
+        # Loại bỏ tất cả code block markdown (```...```)
+        code_blocks = re.findall(r"```(?:\w+)?\\n?([\\s\\S]*?)```", text)
+        if code_blocks:
+            # Nếu có nhiều code block, lấy cái đầu tiên
+            return code_blocks[0].strip()
+        # Nếu không có code block, trả về text gốc
+        return text.strip()
     
     async def _extract_file_structure(self, code: str, language: str) -> Dict[str, Any]:
         """Extract file structure from generated code.

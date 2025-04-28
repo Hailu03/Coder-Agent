@@ -59,8 +59,19 @@ class TesterAgent(Agent):
         logger.info("Executing combined solution and test code")
         output, execution_time, error = await self._run_code(code, language)
 
-        if "FAILED" in output:
-            summary = await self._analyze_test_failures(code, language, output)
+        # Kiểm tra cả lỗi thực thi và kết quả test failed
+        if "FAILED" in output or error:
+            # Trường hợp ModuleNotFoundError, gợi ý cài đặt package
+            if "ModuleNotFoundError" in error:
+                module_match = re.search(r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]", error)
+                if module_match:
+                    missing_module = module_match.group(1)
+                    summary = f"Thiếu thư viện: {missing_module}. Hãy cài đặt bằng lệnh 'pip install {missing_module}'."
+                else:
+                    summary = f"Thiếu thư viện. Hãy cài đặt thư viện cần thiết: {error}"
+            else:
+                # Phân tích lỗi test thông thường
+                summary = await self._analyze_test_failures(code, language, output) if "FAILED" in output else error
             isPass = False
         else:
             summary = "All tests passed."
@@ -137,24 +148,93 @@ class TesterAgent(Agent):
                 stderr_content = process.stderr if process.stderr else ""
                 
                 # Kết hợp stdout và stderr để phân tích cú pháp
-                # Thường thì unittest xuất ra stderr, nhưng kết hợp cả hai là an toàn nhất
-                combined_output = stdout_content + stderr_content 
+                combined_output = stdout_content + stderr_content
+                
+                # Kiểm tra lỗi thiếu module/package theo từng ngôn ngữ
+                if process.returncode != 0:
+                    # Python - ModuleNotFoundError
+                    if language.lower() in ["python", "py"] and "ModuleNotFoundError" in stderr_content:
+                        module_match = re.search(r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]", stderr_content)
+                        if module_match:
+                            missing_module = module_match.group(1)
+                            logger.info(f"Đã phát hiện module Python thiếu: {missing_module}. Thử cài đặt...")
+                            success, message = self._install_missing_module(missing_module, language)
+                            
+                            if success:
+                                logger.info(f"Đã cài đặt thành công {missing_module}, chạy lại code...")
+                                process = subprocess.run(
+                                    cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10
+                                )
+                                # Cập nhật kết quả đầu ra
+                                stdout_content = process.stdout if process.stdout else ""
+                                stderr_content = process.stderr if process.stderr else ""
+                                combined_output = stdout_content + stderr_content
+                    
+                    # JavaScript/Node.js - Cannot find module
+                    elif language.lower() in ["javascript", "js", "nodejs", "node"] and "Cannot find module" in stderr_content:
+                        module_match = re.search(r"Cannot find module ['\"]([^'\"]+)['\"]", stderr_content)
+                        if module_match:
+                            missing_module = module_match.group(1)
+                            logger.info(f"Đã phát hiện package Node.js thiếu: {missing_module}. Thử cài đặt...")
+                            success, message = self._install_missing_module(missing_module, language)
+                            
+                            if success:
+                                logger.info(f"Đã cài đặt thành công {missing_module}, chạy lại code...")
+                                process = subprocess.run(
+                                    cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10
+                                )
+                                # Cập nhật kết quả đầu ra
+                                stdout_content = process.stdout if process.stdout else ""
+                                stderr_content = process.stderr if process.stderr else ""
+                                combined_output = stdout_content + stderr_content
+                    
+                    # Java - ClassNotFoundException/NoClassDefFoundError
+                    elif language.lower() == "java" and ("ClassNotFoundException" in stderr_content or "NoClassDefFoundError" in stderr_content):
+                        class_match = re.search(r"(ClassNotFoundException|NoClassDefFoundError): ([A-Za-z0-9_.]+)", stderr_content)
+                        if class_match:
+                            missing_class = class_match.group(2)
+                            logger.info(f"Đã phát hiện class Java thiếu: {missing_class}. Cố gắng xác định package...")
+                            
+                            # Cố gắng xác định package tương ứng (có thể không chính xác và cần AI để gợi ý)
+                            # Giả sử format: org.example.package.ClassName -> org.example.package
+                            parts = missing_class.split('.')
+                            if len(parts) > 1:
+                                potential_package = '.'.join(parts[:-1])
+                                logger.info(f"Thử cài đặt package: {potential_package}")
+                                success, message = self._install_missing_module(potential_package, language)
+                                
+                                if success:
+                                    # Chạy lại nếu thành công
+                                    process = subprocess.run(
+                                        cmd,
+                                        capture_output=True, 
+                                        text=True,
+                                        timeout=10
+                                    )
+                                    stdout_content = process.stdout if process.stdout else ""
+                                    stderr_content = process.stderr if process.stderr else ""
+                                    combined_output = stdout_content + stderr_content
                 
                 # Xác định lỗi thực thi thực sự
                 execution_error = ""
                 if process.returncode != 0:
                     # Nếu có lỗi trả về, stderr có thể chứa thông tin lỗi hữu ích
                     execution_error = f"Process exited with code {process.returncode}. Stderr: {stderr_content.strip()}"
-                # ---- KẾT THÚC SỬA ĐỔI ----
 
                 # Cập nhật logging để phản ánh sự thay đổi
-                logger.info(f"Test Results:\n {combined_output}...")
+                logger.info(f"Test Results:\n {combined_output[:500]}...")
                 logger.info(f"Execution time: {execution_time} ms")
                 if execution_error:
                     logger.error(f"Execution Error: {execution_error}")
 
                 # Trả về output kết hợp và lỗi thực thi (nếu có)
-                return combined_output.strip(), execution_time, execution_error 
+                return combined_output.strip(), execution_time, execution_error
                 
             except subprocess.TimeoutExpired:
                 return "", 10000, "Execution timed out after 10 seconds"
@@ -359,3 +439,62 @@ class TesterAgent(Agent):
         }
         
         return extensions.get(language.lower(), "txt")
+        
+    def _install_missing_module(self, module_name: str, language: str = "python") -> tuple:
+        """Cài đặt module/package/thư viện thiếu.
+        
+        Args:
+            module_name: Tên module cần cài đặt
+            language: Ngôn ngữ lập trình (python, javascript, java, v.v.)
+            
+        Returns:
+            Tuple (success, message)
+        """
+        logger.info(f"Đang thử cài đặt thư viện thiếu cho {language}: {module_name}")
+        try:
+            # Xử lý theo từng ngôn ngữ
+            if language.lower() in ["python", "py"]:
+                # Cài đặt package bằng pip
+                process = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", module_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=120  # Cho phép 2 phút để cài đặt
+                )
+                
+            elif language.lower() in ["javascript", "js", "nodejs", "node"]:
+                # Cài đặt package bằng npm
+                process = subprocess.run(
+                    ["npm", "install", module_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=180  # NPM có thể mất nhiều thời gian hơn
+                )
+                
+            elif language.lower() == "java":
+                # Java không có trình quản lý gói trực tiếp như Python/Node
+                # Nhưng chúng ta có thể xử lý với Maven nếu có file pom.xml
+                if os.path.exists("pom.xml"):
+                    # Trường hợp dùng Maven
+                    process = subprocess.run(
+                        ["mvn", "dependency:get", f"-Dartifact=:{module_name}:RELEASE"],
+                        capture_output=True,
+                        text=True,
+                        timeout=180
+                    )
+                else:
+                    return False, f"Không thể tự động cài đặt {module_name} cho Java. Hãy thêm thư viện vào classpath."
+                
+            else:
+                return False, f"Không hỗ trợ cài đặt tự động cho ngôn ngữ {language}. Vui lòng cài đặt {module_name} thủ công."
+            
+            if process.returncode == 0:
+                logger.info(f"Đã cài đặt thành công: {module_name}")
+                return True, f"Đã cài đặt thành công: {module_name}"
+            else:
+                logger.error(f"Không thể cài đặt {module_name}: {process.stderr}")
+                return False, f"Không thể cài đặt {module_name}: {process.stderr}"
+                
+        except Exception as e:
+            logger.error(f"Lỗi khi cài đặt {module_name}: {str(e)}")
+            return False, f"Lỗi khi cài đặt {module_name}: {str(e)}"

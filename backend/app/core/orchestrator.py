@@ -78,6 +78,7 @@ class AgentOrchestrator:
             
             logger.info("Phase 1: Planning solution approach")
             plan_result = await self.planner_agent.process(planning_input)
+            logger.info(f"Planning result: {plan_result}")
             
             # Update phase status
             if phase_callback:
@@ -92,6 +93,7 @@ class AgentOrchestrator:
             
             logger.info("Phase 2: Researching relevant information")
             research_result = await self.research_agent.process(research_input)
+            logger.info(f"Research result: {research_result}")
             
             # Update phase status
             if phase_callback:

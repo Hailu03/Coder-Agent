@@ -192,12 +192,48 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
             phase_callback=phase_update_callback
         )
         
+        # Get the code and other solution details
+        solution_code = solution.get("solution", {}).get("code", "")
+        problem_analysis = solution.get("solution", {}).get("problem_analysis", "")
+        file_structure = solution.get("solution", {}).get("file_structure", {})
+        
+        # Create properly formatted solution dictionary for the response
+        solution_dict = {
+            "code": solution_code,
+            "analysis": problem_analysis,
+            "language": language,
+            "approach": solution.get("solution", {}).get("approach", []),
+            "libraries": solution.get("solution", {}).get("libraries", []),
+            "best_practices": solution.get("solution", {}).get("best_practices", []),
+        }
+        
+        # Convert file_structure dictionary to a list of file dictionaries
+        code_files_list = []
+        if isinstance(file_structure, dict):
+            # Handle files from file_structure
+            if "files" in file_structure and isinstance(file_structure["files"], list):
+                for file_info in file_structure["files"]:
+                    if isinstance(file_info, dict):
+                        code_files_list.append({
+                            "path": file_info.get("path", "main.py"),
+                            "content": solution_code,
+                            "description": file_info.get("description", ""),
+                        })
+            
+            # If no files specified, create a default one
+            if not code_files_list:
+                code_files_list.append({
+                    "path": f"main.{language}",
+                    "content": solution_code,
+                    "description": "Main solution file",
+                })
+        
         # Update task with solution
         tasks[task_id].update({
             "status": TaskStatus.COMPLETED,
-            "solution": solution.get("solution"),
-            "explanation": solution.get("explanation"),
-            "code_files": solution.get("code_files"),
+            "solution": solution_dict,
+            "explanation": problem_analysis,
+            "code_files": code_files_list,
             "detailed_status": {"phase": "completed", "progress": 100}
         })
         

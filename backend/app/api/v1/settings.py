@@ -12,8 +12,6 @@ import logging
 import json
 from dotenv import load_dotenv, set_key
 from pathlib import Path
-from app.core.config import Config
-
 from ...core.config import settings, ROOT_DIR
 
 # Configure logging
@@ -23,8 +21,7 @@ logger = logging.getLogger("api.settings")
 router = APIRouter()
 
 # ENV file path
-config = Config()
-ENV_FILE = config.env_file
+ENV_FILE = os.path.join(ROOT_DIR, ".env")
 
 # Request models
 class SettingsUpdateRequest(BaseModel):
