@@ -1,23 +1,30 @@
 # Collaborative Coding Agents
 
-Collaborative Coding Agents is an application that uses AI to automatically generate programming solutions through the coordination of specialized agents. The system leverages AI models to analyze, research, and generate code based on user requirements.
+Collaborative Coding Agents is an application that uses artificial intelligence (AI) to automatically generate programming solutions through the coordination of specialized agents. The system leverages AI models to analyze, research, and generate code based on user requirements.
 
 ![alt](image/app.png)
 
 ## System Architecture
 
-The system consists of two main components:
+The system consists of three main components:
 
 ### Backend (FastAPI)
 
 - **Agents**: Specialized agents including:
   - `PlannerAgent`: Analyzes problems and creates solution plans
-  - `ResearchAgent`: Researches relevant information
+  - `ResearchAgent`: Researches relevant information from the web and external sources
   - `DeveloperAgent`: Generates source code based on plans and research
+  - `TesterAgent`: Evaluates and tests code quality
 
 - **Orchestrator**: Coordinates the workflow between agents
 - **AI Service**: Communicates with AI model APIs (Gemini, OpenAI)
 - **API**: Provides endpoints to interact with the system
+
+### MCP Server (Model Context Protocol)
+
+- Provides a protocol for agents to communicate with external services
+- Integrates Serper API for web search capabilities
+- Allows agents to access data and extended functionality
 
 ### Frontend (React + TypeScript)
 
@@ -29,9 +36,10 @@ The system consists of two main components:
 
 - Analysis of programming requirements
 - Problem-solving planning
-- Research of relevant information
+- Web-based research for relevant information
 - Source code generation for multiple programming languages
 - Configuration and selection of AI models
+- Testing and code optimization
 
 ## Installation and Running with Docker
 
@@ -39,7 +47,7 @@ The system consists of two main components:
 
 - Docker and Docker Compose
 - API keys for AI services (Gemini or OpenAI)
-- (Optional) Serper API key for web search functionality
+- Serper API key for web search functionality
 
 ### Configuration
 
@@ -58,12 +66,18 @@ SERPER_API_KEY=your_serper_api_key_here
 PROJECT_NAME="Coder-Agent"
 ```
 
+2. Create a `.env` file in the `mcpserver` directory with the following content:
+
+```
+SERPER_API_KEY=your_serper_api_key_here
+```
+
 ### Starting with Docker Compose
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/Hailu03/Coder-Agent.git
-cd Coder-Agent
+git clone https://github.com/Hailu03/collaborative-coding-agents.git
+cd collaborative-coding-agents
 ```
 
 2. Run the application:
@@ -75,6 +89,7 @@ docker-compose up -d
    - Frontend: http://localhost:80
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
+   - MCP Server: http://localhost:9000
 
 ### Stopping the Application
 
@@ -100,6 +115,14 @@ npm install
 npm run dev
 ```
 
+### MCP Server Development
+
+```bash
+cd mcpserver
+pip install -r requirements.txt
+python run.py
+```
+
 ## API Endpoints
 
 - `POST /api/v1/solve`: Submit a problem-solving request
@@ -113,15 +136,23 @@ npm run dev
 ### Common Issues
 
 1. **API Connection Failed**
-   - Check API keys in the .env file
+   - Check API keys in the .env files
    - Ensure the backend is running and port 8000 is not blocked
 
 2. **Container Not Starting**
    - Check logs: `docker-compose logs`
-   - Ensure no services are occupying ports 80 or 8000
+   - Ensure no services are occupying ports 80, 8000, or 9000
 
 3. **CORS Errors**
    - Check the BACKEND_CORS_ORIGINS configuration in docker-compose.yml
+
+4. **Memory or TaskGroup Errors**
+   - Increase memory limits for containers in docker-compose.yml
+   - Set the environment variable LOW_MEMORY_MODE=true
+
+5. **MCP Server Errors**
+   - Check the connection to the MCP Server (default http://mcp-server:9000)
+   - Ensure your Serper API Key is valid
 
 ## Contributing
 
