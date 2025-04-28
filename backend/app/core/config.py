@@ -49,9 +49,20 @@ class Settings(BaseSettings):
     # OpenAI settings
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4.1-nano"
+
+    # GitHub API settings
+    GITHUB_ACCESS_TOKEN: Optional[str] = None
     
     # External API settings
     SERPER_API_KEY: Optional[str] = None
+
+    # MCP URL - supports different environments (local dev vs Docker)
+    # Environment variable can override this default
+    MCP_URL: str = os.environ.get("MCP_URL")
+    
+    # Use less memory-intensive options when running in constrained environments
+    # Set this to True if running in Docker containers with limited memory
+    LOW_MEMORY_MODE: bool = os.environ.get("LOW_MEMORY_MODE", "").lower() == "true"
     
     # Logging settings
     LOG_LEVEL: str = "INFO"
@@ -71,16 +82,16 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Validate API keys
-if settings.AI_PROVIDER == "gemini" and not settings.GEMINI_API_KEY:
-    import warnings
-    warnings.warn(
-        "GEMINI_API_KEY not set in environment variables or .env file. "
-        "Set this variable to use the Gemini AI service."
-    )
+# if settings.AI_PROVIDER == "gemini" and not settings.GEMINI_API_KEY:
+#     import warnings
+#     warnings.warn(
+#         "GEMINI_API_KEY not set in environment variables or .env file. "
+#         "Set this variable to use the Gemini AI service."
+#     )
 
-if settings.AI_PROVIDER == "openai" and not settings.OPENAI_API_KEY:
-    import warnings
-    warnings.warn(
-        "OPENAI_API_KEY not set in environment variables or .env file. "
-        "Set this variable to use the OpenAI service."
-    )
+# if settings.AI_PROVIDER == "openai" and not settings.OPENAI_API_KEY:
+#     import warnings
+#     warnings.warn(
+#         "OPENAI_API_KEY not set in environment variables or .env file. "
+#         "Set this variable to use the OpenAI service."
+#     )

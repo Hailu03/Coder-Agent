@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   backend:
+    container_name: backend
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -16,10 +15,9 @@ services:
       - ./backend:/app
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: always
-    networks:
-      - app-network
 
   frontend:
+    container_name: frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -38,9 +36,13 @@ services:
     restart: always
     environment:
       - VITE_API_BASE_URL=http://backend:8000/api/v1
-    networks:
-      - app-network
 
-networks:
-  app-network:
-    driver: bridge
+  mcp-server:
+    container_name: mcp-server
+    build:
+      context: ./mcpserver
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./mcpserver:/app  # Correctly mount the mcpserver directory

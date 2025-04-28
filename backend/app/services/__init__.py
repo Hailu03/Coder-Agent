@@ -14,5 +14,7 @@ __all__ = [
     'AIService', 
     'GeminiService', 
     'OpenAIService', 
-    'get_ai_service'
+    'get_ai_service',
+    'MCPServer',
+    'GitHubClient'
 ]

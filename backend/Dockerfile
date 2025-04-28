@@ -1,4 +1,5 @@
-FROM python:3.9-slim
+ARG VERSION=3.12
+FROM python:${VERSION:-3.11}
 
 WORKDIR /app
 
@@ -7,7 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install uvicorn with standard extras for hot-reload functionality
-RUN pip install uvicorn[standard]
+# RUN pip install uvicorn[standard]
 
 # For development, we won't copy the application code
 # since it will be mounted as a volume

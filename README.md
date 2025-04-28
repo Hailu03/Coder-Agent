@@ -13,7 +13,7 @@ The system consists of two main components:
 - **Agents**: Specialized agents including:
   - `PlannerAgent`: Analyzes problems and creates solution plans
   - `ResearchAgent`: Researches relevant information
-  - `CodeGeneratorAgent`: Generates source code based on plans and research
+  - `DeveloperAgent`: Generates source code based on plans and research
 
 - **Orchestrator**: Coordinates the workflow between agents
 - **AI Service**: Communicates with AI model APIs (Gemini, OpenAI)

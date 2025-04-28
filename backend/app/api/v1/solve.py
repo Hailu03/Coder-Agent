@@ -12,65 +12,17 @@ import json
 import uuid
 from datetime import datetime
 
-from ..core.orchestrator import AgentOrchestrator
-from ..models.models import TaskStatus
+from ...core.orchestrator import AgentOrchestrator
+from ...models.models import TaskStatus, SolveRequest, TaskResponse, SolutionResponse
 
 # Configure logging
 logger = logging.getLogger("api.solve")
 
-# Custom route class to handle OPTIONS requests properly
-class CORSRoute(APIRoute):
-    def get_route_handler(self) -> Callable:
-        original_route_handler = super().get_route_handler()
-
-        async def custom_route_handler(request: Request) -> Any:
-            # Handle OPTIONS requests explicitly
-            if request.method == "OPTIONS":
-                logger.info(f"Handling OPTIONS request to {request.url.path}")
-                return Response(
-                    content=json.dumps({}),
-                    status_code=200,
-                    media_type="application/json",
-                    headers={
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-                        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                    },
-                )
-            return await original_route_handler(request)
-
-        return custom_route_handler
-
-# Create router with custom route class
-router = APIRouter(route_class=CORSRoute)
+# Create router 
+router = APIRouter()
 
 # In-memory storage for tasks (in a production environment, this would be a database)
 tasks = {}
-
-# Request models
-class SolveRequest(BaseModel):
-    """Model for problem-solving requests."""
-    requirements: str
-    language: str
-    additional_context: Optional[str] = None
-
-# Response models
-class TaskResponse(BaseModel):
-    """Model for task response."""
-    task_id: str
-    status: TaskStatus
-    created_at: str
-    detailed_status: Optional[Dict[str, Any]] = None
-
-class SolutionResponse(BaseModel):
-    """Model for solution response."""
-    task_id: str
-    status: TaskStatus
-    solution: Optional[Dict[str, Any]] = None
-    explanation: Optional[str] = None
-    code_files: Optional[List[Dict[str, str]]] = None
-    error: Optional[str] = None
-    detailed_status: Optional[Dict[str, Any]] = None
 
 @router.post("/", response_model=TaskResponse)
 async def solve_problem(request: Request, background_tasks: BackgroundTasks, data: SolveRequest = Body(...)):
@@ -130,7 +82,7 @@ async def solve_problem(request: Request, background_tasks: BackgroundTasks, dat
             detail=f"Failed to process request: {str(e)}"
         )
 
-@router.get("/{task_id}", response_model=SolutionResponse)
+@router.get("/task/{task_id}", response_model=SolutionResponse)
 async def get_solution(request: Request, task_id: str):
     """Get the solution for a specific task.
     
@@ -168,20 +120,6 @@ async def get_solution(request: Request, task_id: str):
             status_code=500,
             detail=f"Failed to retrieve solution: {str(e)}"
         )
-
-@router.get("/task/{task_id}", response_model=SolutionResponse)
-async def get_solution_alternative_path(request: Request, task_id: str):
-    """Alternative endpoint to get the solution for a specific task.
-    This endpoint exists for compatibility with the frontend.
-    
-    Args:
-        request: The HTTP request
-        task_id: The unique ID of the task
-        
-    Returns:
-        The solution if available
-    """
-    return await get_solution(request, task_id)
 
 @router.post("/task/{task_id}/cancel", response_model=Dict[str, str])
 async def cancel_task(request: Request, task_id: str):
@@ -254,12 +192,48 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
             phase_callback=phase_update_callback
         )
         
+        # Get the code and other solution details
+        solution_code = solution.get("solution", {}).get("code", "")
+        problem_analysis = solution.get("solution", {}).get("problem_analysis", "")
+        file_structure = solution.get("solution", {}).get("file_structure", {})
+        
+        # Create properly formatted solution dictionary for the response
+        solution_dict = {
+            "code": solution_code,
+            "analysis": problem_analysis,
+            "language": language,
+            "approach": solution.get("solution", {}).get("approach", []),
+            "libraries": solution.get("solution", {}).get("libraries", []),
+            "best_practices": solution.get("solution", {}).get("best_practices", []),
+        }
+        
+        # Convert file_structure dictionary to a list of file dictionaries
+        code_files_list = []
+        if isinstance(file_structure, dict):
+            # Handle files from file_structure
+            if "files" in file_structure and isinstance(file_structure["files"], list):
+                for file_info in file_structure["files"]:
+                    if isinstance(file_info, dict):
+                        code_files_list.append({
+                            "path": file_info.get("path", "main.py"),
+                            "content": solution_code,
+                            "description": file_info.get("description", ""),
+                        })
+            
+            # If no files specified, create a default one
+            if not code_files_list:
+                code_files_list.append({
+                    "path": f"main.{language}",
+                    "content": solution_code,
+                    "description": "Main solution file",
+                })
+        
         # Update task with solution
         tasks[task_id].update({
             "status": TaskStatus.COMPLETED,
-            "solution": solution.get("solution"),
-            "explanation": solution.get("explanation"),
-            "code_files": solution.get("code_files"),
+            "solution": solution_dict,
+            "explanation": problem_analysis,
+            "code_files": code_files_list,
             "detailed_status": {"phase": "completed", "progress": 100}
         })
         

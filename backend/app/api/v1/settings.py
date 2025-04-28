@@ -12,37 +12,13 @@ import logging
 import json
 from dotenv import load_dotenv, set_key
 from pathlib import Path
-
-from ..core.config import settings, ROOT_DIR
+from ...core.config import settings, ROOT_DIR
 
 # Configure logging
 logger = logging.getLogger("api.settings")
 
-# Custom route class to handle OPTIONS requests properly
-class CORSRoute(APIRoute):
-    def get_route_handler(self) -> Callable:
-        original_route_handler = super().get_route_handler()
-
-        async def custom_route_handler(request: Request) -> Any:
-            # Handle OPTIONS requests explicitly
-            if request.method == "OPTIONS":
-                logger.info(f"Handling OPTIONS request to {request.url.path}")
-                return Response(
-                    content=json.dumps({}),
-                    status_code=200,
-                    media_type="application/json",
-                    headers={
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-                        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                    },
-                )
-            return await original_route_handler(request)
-
-        return custom_route_handler
-
-# Create router with custom route class
-router = APIRouter(route_class=CORSRoute)
+# Create router 
+router = APIRouter()
 
 # ENV file path
 ENV_FILE = os.path.join(ROOT_DIR, ".env")
@@ -53,7 +29,6 @@ class SettingsUpdateRequest(BaseModel):
     ai_provider: Optional[str] = None
     api_key: Optional[str] = None
     serper_api_key: Optional[str] = None
-
 
 @router.post("/", response_model=dict)
 async def update_settings(request: Request, data: SettingsUpdateRequest = Body(...)):

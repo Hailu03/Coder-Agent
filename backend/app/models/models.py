@@ -47,3 +47,28 @@ class AgentResponse(BaseModel):
     agent: str
     type: str
     content: Dict[str, Any] = Field(default_factory=dict)
+
+# Request models
+class SolveRequest(BaseModel):
+    """Model for problem-solving requests."""
+    requirements: str
+    language: str
+    additional_context: Optional[str] = None
+
+# Response models
+class TaskResponse(BaseModel):
+    """Model for task response."""
+    task_id: str
+    status: TaskStatus
+    created_at: str
+    detailed_status: Optional[Dict[str, Any]] = None
+
+class SolutionResponse(BaseModel):
+    """Model for solution response."""
+    task_id: str
+    status: TaskStatus
+    solution: Optional[Dict[str, Any]] = None
+    explanation: Optional[str] = None
+    code_files: Optional[List[Dict[str, str]]] = None
+    error: Optional[str] = None
+    detailed_status: Optional[Dict[str, Any]] = None
