@@ -13,6 +13,8 @@ import json
 from dotenv import load_dotenv, set_key
 from pathlib import Path
 from ...core.config import settings, ROOT_DIR
+from ...auth.deps import get_current_active_user
+from ...db.models import User
 
 # Configure logging
 logger = logging.getLogger("api.settings")
@@ -31,18 +33,23 @@ class SettingsUpdateRequest(BaseModel):
     serper_api_key: Optional[str] = None
 
 @router.post("/", response_model=dict)
-async def update_settings(request: Request, data: SettingsUpdateRequest = Body(...)):
+async def update_settings(
+    request: Request, 
+    data: SettingsUpdateRequest = Body(...),
+    current_user: User = Depends(get_current_active_user)
+):
     """Update application settings.
     
     Args:
         request: The HTTP request
         data: The settings update request
+        current_user: The authenticated user (must be active)
     
     Returns:
         Success status and message
     """
     try:
-        logger.info("Updating application settings")
+        logger.info(f"User {current_user.username} is updating application settings")
         logger.info(f"Request headers: {request.headers}")
         logger.info(f"Request body (settings to update): {data}")
         
@@ -142,17 +149,21 @@ async def update_settings(request: Request, data: SettingsUpdateRequest = Body(.
 
 
 @router.get("/", response_model=dict)
-async def get_settings(request: Request):
+async def get_settings(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """Get current application settings.
     
     Args:
         request: The HTTP request
+        current_user: The authenticated user (must be active)
     
     Returns:
         Current settings
     """
     try:
-        logger.info(f"Getting current settings")
+        logger.info(f"User {current_user.username} is retrieving current settings")
         logger.info(f"Request headers: {request.headers}")
         
         # Don't return actual API keys, just indicate if they're set

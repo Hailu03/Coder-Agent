@@ -1,0 +1,16 @@
+services:
+  mcp-server:
+    container_name: mcp-server
+    build:
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./:/app  # Correctly mount the mcpserver directory
+    networks:
+      - backend_default
+
+# default network backend
+networks:
+  backend_default:
+    external: true

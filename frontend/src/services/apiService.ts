@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Base URL for API endpoints - use environment variable with fallback
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 // Make sure all endpoints have trailing slashes to match FastAPI routes
 const ensureTrailingSlash = (url: string) => url.endsWith('/') ? url : `${url}/`;
@@ -36,6 +36,35 @@ export interface SettingsUpdateRequest {
   ai_provider?: string;
   api_key?: string;
   serper_api_key?: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: UserResponse;
+}
+
+export interface UserResponse {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  avatar?: string;
+  created_at: string;
+}
+
+export interface UserRegisterRequest {
+  username: string;
+  email: string;
+  full_name?: string;
+  password: string;
+}
+
+export interface UserUpdateRequest {
+  email?: string;
+  full_name?: string;
+  password?: string;
+  avatar?: string;
 }
 
 // API service class
@@ -141,6 +170,129 @@ class ApiService {
       console.error('Error details:', error.response?.data || error.message);
       throw error;
     }
+  }
+
+  /**
+   * Login user
+   * @param username Username
+   * @param password Password
+   * @returns Authentication token and user info
+   */
+  async login(username: string, password: string): Promise<LoginResponse> {
+    try {
+      console.log('Logging in user:', username);
+      
+      // OAuth2 form submission format
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('password', password);
+      
+      const response = await axios.post<LoginResponse>(
+        ensureTrailingSlash(`${API_BASE_URL}/auth/login`), 
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          }
+        }
+      );
+      
+      console.log('Login successful');
+      
+      // Store both tokens
+      localStorage.setItem('token', response.data.access_token);
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('Login error:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Register a new user
+   * @param userData User registration data
+   * @returns Authentication token and user info
+   */
+  async register(userData: UserRegisterRequest): Promise<LoginResponse> {
+    try {
+      console.log('Registering new user:', userData.username);
+      
+      const response = await axios.post<LoginResponse>(
+        ensureTrailingSlash(`${API_BASE_URL}/auth/register`), 
+        userData
+      );
+      
+      console.log('Registration successful');
+      
+      // Store both tokens
+      localStorage.setItem('token', response.data.access_token);
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get current user information
+   * @returns User information
+   */
+  async getCurrentUser(): Promise<UserResponse> {
+    try {
+      console.log('Fetching current user info');
+      
+      const response = await axios.get<UserResponse>(ensureTrailingSlash(`${API_BASE_URL}/auth/me`));
+      
+      console.log('Current user info fetched');
+      return response.data;
+    } catch (error: any) {
+      console.error('Error fetching current user:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user information
+   * @param userData User data to update
+   * @returns Updated user information
+   */
+  async updateUser(userData: UserUpdateRequest): Promise<UserResponse> {
+    try {
+      console.log('Updating user information');
+      
+      const response = await axios.put<UserResponse>(
+        ensureTrailingSlash(`${API_BASE_URL}/auth/me`), 
+        userData
+      );
+      
+      console.log('User information updated');
+      return response.data;
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if user is logged in
+   * @returns True if logged in, false otherwise
+   */
+  isLoggedIn(): boolean {
+    return !!localStorage.getItem('token');
+  }
+  
+  /**
+   * Logout user
+   */
+  logout(): void {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
   }
 }
 

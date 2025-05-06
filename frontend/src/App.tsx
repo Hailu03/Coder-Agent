@@ -6,6 +6,7 @@ import Footer from './components/Footer'
 import HomePage from './pages/HomePage'
 import SolvePage from './pages/SolvePage'
 import ResultPage from './pages/ResultPage'
+import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 import './App.css'
 
@@ -77,6 +78,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/solve" element={<SolvePage />} />
               <Route path="/result/:taskId" element={<ResultPage />} />
+              <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>

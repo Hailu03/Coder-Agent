@@ -40,6 +40,8 @@ The system consists of three main components:
 - Source code generation for multiple programming languages
 - Configuration and selection of AI models
 - Testing and code optimization
+- User authentication system
+- Settings management for API configurations
 
 ## Installation and Running with Docker
 
@@ -47,11 +49,11 @@ The system consists of three main components:
 
 - Docker and Docker Compose
 - API keys for AI services (Gemini or OpenAI)
-- Serper API key for web search functionality
+- Serper API key for web search functionality (optional)
 
 ### Configuration
 
-1. Create a `.env` file in the `backend` directory with the following content:
+Create a `.env` file in the `backend` directory with the following content:
 
 ```
 # AI Provider: "gemini" or "openai"
@@ -64,12 +66,9 @@ SERPER_API_KEY=your_serper_api_key_here
 
 # Other configurations
 PROJECT_NAME="Coder-Agent"
-```
 
-2. Create a `.env` file in the `mcpserver` directory with the following content:
-
-```
-SERPER_API_KEY=your_serper_api_key_here
+# JWT Secret (for user authentication)
+SECRET_KEY=your_secret_key_for_jwt_encryption
 ```
 
 ### Starting with Docker Compose
@@ -125,19 +124,45 @@ python run.py
 
 ## API Endpoints
 
+### Solve Endpoints
 - `POST /api/v1/solve`: Submit a problem-solving request
 - `GET /api/v1/solve/task/{task_id}`: Check the status of a task
 - `POST /api/v1/solve/task/{task_id}/cancel`: Cancel a running task
+
+### Settings Endpoints
 - `POST /api/v1/settings`: Update system settings
 - `GET /api/v1/settings`: Get current settings information
+
+### Authentication Endpoints
+- `POST /api/v1/auth/login`: User login
+- `POST /api/v1/auth/register`: User registration
+- `GET /api/v1/auth/me`: Get current user information
+- `PUT /api/v1/auth/me`: Update user information
+
+## User Authentication
+
+The system now requires user authentication for accessing important features:
+- User registration and login are required
+- Settings can only be accessed by authenticated users
+- The Solve page requires login before accessing
+
+## Project Structure
+
+- `backend/`: FastAPI backend server
+- `frontend/`: React frontend application
+- `mcpserver/`: Model Context Protocol server
+- `image/`: Project images and screenshots
+
+Each folder contains its own README file with detailed information about its contents and purpose.
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **API Connection Failed**
-   - Check API keys in the .env files
+   - Check API keys in the .env file
    - Ensure the backend is running and port 8000 is not blocked
+   - Verify that you're logged in for accessing protected endpoints
 
 2. **Container Not Starting**
    - Check logs: `docker-compose logs`
@@ -150,9 +175,9 @@ python run.py
    - Increase memory limits for containers in docker-compose.yml
    - Set the environment variable LOW_MEMORY_MODE=true
 
-5. **MCP Server Errors**
-   - Check the connection to the MCP Server (default http://mcp-server:9000)
-   - Ensure your Serper API Key is valid
+5. **Authentication Issues**
+   - Clear browser local storage if login/logout issues persist
+   - Check if JWT token is being properly stored and sent with requests
 
 ## Contributing
 

@@ -10,9 +10,17 @@ google-api-core==2.19.2
 google-auth==2.27.0
 python-multipart==0.0.6
 pydantic==2.11.3
+pydantic[email]==2.11.3
 pydantic-core==2.33.1
 pydantic-settings==2.9.1
 mcp==1.6.0
 httpx
 google-genai
 websockets
+# Authentication and database
+sqlalchemy==2.0.27
+pymysql==1.1.0
+python-jose[cryptography]==3.3.0
+# Fixed versions for passlib and bcrypt compatibility
+passlib==1.7.4
+bcrypt==4.0.1

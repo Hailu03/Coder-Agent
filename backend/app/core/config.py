@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # CORS settings - use custom parser for string or list input
-    BACKEND_CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000", "http://localhost:80", "http://frontend:80", "http://frontend:5173"]
+    BACKEND_CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000", "http://localhost:80", "http://localhost", "http://localhost:5173", "http://frontend:5173", "http://frontend:80"]
     
     # AI providers
     AI_PROVIDER: str = "gemini"  # "gemini" or "openai"
@@ -58,7 +58,15 @@ class Settings(BaseSettings):
 
     # MCP URL - supports different environments (local dev vs Docker)
     # Environment variable can override this default
-    MCP_URL: str = os.environ.get("MCP_URL")
+    MCP_URL: str = os.environ.get("MCP_URL", "http://mcp-server:9000")
+    
+    # Database settings
+    SQL_DB_URL: Optional[str] = os.environ.get("SQL_DB_URL", "mysql+pymysql://root:123@mysql:3308/proagents")
+    
+    # Authentication settings
+    JWT_SECRET_KEY: str = os.environ.get("JWT_SECRET_KEY", "your_super_secret_key_for_jwt_tokens")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     
     # Use less memory-intensive options when running in constrained environments
     # Set this to True if running in Docker containers with limited memory

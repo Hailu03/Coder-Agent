@@ -70,67 +70,6 @@ class GeminiService(AIService):
             logger.error(f"Error generating text with Gemini: {e}")
             return f"Error generating text: {e}"
 
-    async def generate_text_with_mcp(self, prompt: str) -> str:
-        try:
-            # Connect to MCP server via SSE transport
-            async with sse_client(
-                url=settings.MCP_URL,
-                headers=None
-            ) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    mcp_tools = await session.list_tools()
-                    # Map to google-genai Tool objects
-                    tools = [
-                        types.Tool(
-                            function_declarations=[
-                                {
-                                    "name": t.name,
-                                    "description": t.description,
-                                    "parameters": {
-                                        k: v for k, v in t.inputSchema.items()
-                                        if k not in ["additionalProperties", "$schema"]
-                                    },
-                                }
-                            ]
-                        )
-                        for t in mcp_tools.tools
-                    ]
-                    # Request with tools
-                    response = await self.client.aio.models.generate_content(
-                        model=self.model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            temperature=0.6,
-                            tools=tools,
-                        ),
-                    )
-                    content = response.candidates[0].content.parts[0]
-                    if content.function_call:
-                        fc = content.function_call
-                        result = await session.call_tool(fc.name, arguments=fc.args)
-                        # Build after-function call conversation
-                        user_parts = [types.Part.from_text(prompt)]
-                        func_call_part = types.Part(function_call=fc)
-                        func_resp_part = types.Part.from_function_response(
-                            name=fc.name, response={"result": result}
-                        )
-                        conv = [
-                            types.Content(role="user", parts=user_parts),
-                            types.Content(role="model", parts=[func_call_part]),
-                            types.Content(role="function", parts=[func_resp_part]),
-                        ]
-                        follow = await self.client.aio.models.generate_content(
-                            model=self.model_name,
-                            contents=conv,
-                            config=types.GenerateContentConfig(temperature=0.6),
-                        )
-                        return follow.candidates[0].content.parts[0].text
-                    return content.text
-        except Exception as e:
-            logger.error(f"Error in generate_text_with_mcp: {e}")
-            return f"Error generating text with MCP: {e}"
-
     async def generate_structured_output(
         self, prompt: str, output_schema: Dict[str, Any]
     ) -> Dict[str, Any]:
