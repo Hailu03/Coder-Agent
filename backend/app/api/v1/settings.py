@@ -12,7 +12,7 @@ import logging
 import json
 from dotenv import load_dotenv, set_key
 from pathlib import Path
-from ...core.config import settings, ROOT_DIR
+from ...core.config import settings, ROOT_DIR, reload_settings
 from ...auth.deps import get_current_active_user
 from ...db.models import User
 
@@ -133,6 +133,9 @@ async def update_settings(
                 status_code=500, 
                 detail=f"Failed to write to .env file: {str(e)}"
             )
+        
+        # Reload settings in application
+        reload_settings()
         
         logger.info("Settings updated successfully")
         return {

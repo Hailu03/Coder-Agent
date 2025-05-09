@@ -21,11 +21,10 @@ class UserResponse(UserBase):
     is_active: bool = True
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Token(BaseModel):
     access_token: str
-    refresh_token: str  # Added refresh token
     token_type: str
     user: UserResponse
 
@@ -33,9 +32,6 @@ class TokenPayload(BaseModel):
     sub: str
     exp: int
     token_type: str  # 'access' or 'refresh'
-
-class RefreshToken(BaseModel):
-    refresh_token: str
 
 class LoginRequest(BaseModel):
     username: str

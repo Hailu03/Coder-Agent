@@ -32,6 +32,15 @@ class MCPTools:
     def _register_tools(self):
         @self.mcp.tool()
         def search(query: str, api_key: str) -> str:
+            """
+            Search tool using Serper API.
+            Args:
+                query (str): The search query.
+                api_key (str): The API key for Serper API.
+            Returns:
+                str: The search results in JSON format.
+            """
+            logger.info(f"Search tool called with query: {query}")
             if not api_key:
                 raise ValueError("API key is required for the search tool.")
             conn = http.client.HTTPSConnection("google.serper.dev")

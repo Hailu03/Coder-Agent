@@ -9,6 +9,11 @@ import json
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List, Optional, Union
+from dotenv import load_dotenv
+import logging
+
+# Configure logging
+logger = logging.getLogger("config")
 
 # Determine the root directory of the application
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -58,7 +63,7 @@ class Settings(BaseSettings):
 
     # MCP URL - supports different environments (local dev vs Docker)
     # Environment variable can override this default
-    MCP_URL: str = os.environ.get("MCP_URL", "http://mcp-server:9000")
+    MCP_URL: str = os.environ.get("MCP_URL", "http://mcp-server:9000/sse")
     
     # Database settings
     SQL_DB_URL: Optional[str] = os.environ.get("SQL_DB_URL", "mysql+pymysql://root:123@mysql:3308/proagents")
@@ -66,7 +71,6 @@ class Settings(BaseSettings):
     # Authentication settings
     JWT_SECRET_KEY: str = os.environ.get("JWT_SECRET_KEY", "your_super_secret_key_for_jwt_tokens")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     
     # Use less memory-intensive options when running in constrained environments
     # Set this to True if running in Docker containers with limited memory
@@ -88,6 +92,36 @@ class Settings(BaseSettings):
 
 # Create global settings object
 settings = Settings()
+
+# Function to reload settings after .env file changes
+def reload_settings():
+    """Reload settings from environment variables and .env file.
+    
+    This function is called when settings are updated through the API.
+    It reloads environment variables from the .env file and 
+    creates a new settings object with the updated values.
+    """
+    global settings
+    try:
+        # Reload environment from .env file
+        env_path = os.path.join(ROOT_DIR, ".env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
+            logger.info(f"Reloaded environment variables from {env_path}")
+        
+        # Create a new settings object to pick up new values
+        settings = Settings()
+        logger.info(f"Settings reloaded successfully. AI Provider: {settings.AI_PROVIDER}")
+        
+        # Log status of API keys (without revealing them)
+        logger.info(f"Gemini API key set: {bool(settings.GEMINI_API_KEY)}")
+        logger.info(f"OpenAI API key set: {bool(settings.OPENAI_API_KEY)}")
+        logger.info(f"Serper API key set: {bool(settings.SERPER_API_KEY)}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error reloading settings: {e}")
+        return False
 
 # Validate API keys
 # if settings.AI_PROVIDER == "gemini" and not settings.GEMINI_API_KEY:

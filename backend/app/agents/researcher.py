@@ -289,7 +289,6 @@ class ResearchAgent(Agent):
                     "code_implementation": {"type": "string"}
                 }
             })
-            
             # Create simplified summary
             simple_summary = f"{algorithm}: {summary.get('description', '')}. Complexity: {summary.get('complexity', '')}"
             logger.info(f"Algorithm summary: {simple_summary}")

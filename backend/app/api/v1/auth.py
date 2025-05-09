@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import List
 
 from ...db.database import get_db
 from ...db.models import User
-from ...models.auth import UserCreate, UserResponse, UserUpdate, Token, RefreshToken
-from ...auth.utils import verify_password, get_password_hash, create_access_token, create_refresh_token
-from ...auth.deps import get_current_active_user, validate_refresh_token
+from ...models.auth import UserCreate, UserResponse, UserUpdate, Token
+from ...auth.utils import verify_password, get_password_hash, create_access_token
+from ...auth.deps import get_current_active_user
 
 router = APIRouter()
 
@@ -47,12 +46,10 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
     
     # Create tokens
     access_token = create_access_token(data={"sub": user.username})
-    refresh_token = create_refresh_token(data={"sub": user.username})
     
     # Return tokens with user info
     return {
         "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": db_user
     }
@@ -78,37 +75,10 @@ async def login(
     
     # Create tokens
     access_token = create_access_token(data={"sub": user.username})
-    refresh_token = create_refresh_token(data={"sub": user.username})
     
     # Return tokens with user info
     return {
         "access_token": access_token,
-        "token_type": "bearer",
-        "user": user
-    }
-
-@router.post("/refresh", response_model=Token)
-async def refresh_token(
-    token_data: RefreshToken,
-    db: Session = Depends(get_db)
-):
-    """
-    Refresh the access token using a refresh token
-    """
-    # Validate the refresh token
-    try:
-        user = await validate_refresh_token(token_data.refresh_token, db)
-    except HTTPException as e:
-        raise e
-    
-    # Create new tokens
-    access_token = create_access_token(data={"sub": user.username})
-    refresh_token = create_refresh_token(data={"sub": user.username})
-    
-    # Return tokens with user info
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": user
     }

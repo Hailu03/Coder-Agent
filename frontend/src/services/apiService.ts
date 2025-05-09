@@ -13,6 +13,20 @@ axios.defaults.headers.common['Content-Type'] = 'application/json';
 // Don't set withCredentials for '*' origins
 axios.defaults.withCredentials = false;
 
+// Add request interceptor to include authorization token in all requests
+axios.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => {
+    return Promise.reject(error);
+  }
+);
+
 // Types
 export interface SolveRequest {
   requirements: string;

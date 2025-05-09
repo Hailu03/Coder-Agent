@@ -6,12 +6,11 @@ This module defines the Code Generator Agent that produces clean, optimized code
 import json
 import logging
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from .base import Agent
 from ..core.config import settings
-from ..services.ai_service import GeminiService, OpenAIService
 from ..services.ai_service import AIService
-from ..utils import clean_language_name, format_code_with_language
+from ..utils import clean_language_name
 
 # Configure logging
 logger = logging.getLogger("agents.code_generator")
@@ -157,8 +156,8 @@ class DeveloperAgent(Agent):
         CODE EXAMPLES FOR REFERENCE:
         {examples_text if examples_text else 'No specific code examples available'}
         
-        Please provide a complete solution with:
-        1. Well-structured, clean, and optimized code
+        Please provide a complete code solution with:
+        1. Well-structured, clean, and optimized code in both runtime and memory-wise
         2. Appropriate error handling
         3. Clear comments explaining complex parts
         4. Any necessary helper functions or classes
@@ -187,6 +186,9 @@ class DeveloperAgent(Agent):
         }
         
         response = await self.generate_structured_output(prompt, output_schema)
+
+        # strip any markdown code block formatting from the code
+        response["code"] = self.strip_markdown_code_block(response["code"])
         
         if not response:
             logger.warning("Failed to generate structured code response, falling back to text generation")
@@ -448,8 +450,8 @@ class DeveloperAgent(Agent):
         Returns:
             The text with markdown code block formatting removed
         """
-        # Loại bỏ tất cả code block markdown (```...```)
-        code_blocks = re.findall(r"```(?:\w+)?\\n?([\\s\\S]*?)```", text)
+        # Nhận diện code block markdown có hoặc không có tên ngôn ngữ
+        code_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", text)
         if code_blocks:
             # Nếu có nhiều code block, lấy cái đầu tiên
             return code_blocks[0].strip()
@@ -519,7 +521,7 @@ class DeveloperAgent(Agent):
                 
             return file_structure
         except json.JSONDecodeError:
-            self.logger.error(f"Failed to parse AI response as JSON: {response}")
+            logger.error(f"Failed to parse AI response as JSON: {response}")
             
             # If we couldn't parse as JSON, return a default structure
             return {

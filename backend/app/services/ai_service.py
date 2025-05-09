@@ -33,12 +33,6 @@ class AIService(ABC):
         """Generate structured output from a prompt."""
         pass
 
-    @abstractmethod
-    async def generate_text_with_mcp(self, prompt: str) -> str:
-        """Generate text with structured output using MCP."""
-        pass
-
-
 class GeminiService(AIService):
     """Google Gemini AI service using google-genai SDK."""
 
@@ -77,7 +71,7 @@ class GeminiService(AIService):
         full_prompt = (
             f"{prompt}\nPlease respond ONLY with JSON matching schema:\n{schema_str}"
         )
-        max_retries = 2
+        max_retries = 3
         for attempt in range(max_retries + 1):
             try:
                 response = await self.client.aio.models.generate_content(
@@ -87,13 +81,18 @@ class GeminiService(AIService):
                 )
                 text = response.candidates[0].content.parts[0].text
                 data = extract_json_from_text(text)
-                if data or attempt == max_retries:
+                if data:
                     return data
+                elif attempt == max_retries:
+                    logger.warning("JSON extraction failed after all retries, returning empty dict")
+                    return {}
                 logger.warning(
                     f"JSON extraction failed, retry {attempt + 1}/{max_retries}"
                 )
             except Exception as e:
                 logger.error(f"Attempt {attempt+1} error: {e}")
+                if attempt == max_retries:
+                    return {}
         return {}
 
 
