@@ -6,6 +6,7 @@ import json
 
 from .core.config import settings
 from .api import api_router
+from .db.database import Base, engine  # Import database components
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -18,6 +19,9 @@ app = FastAPI(
     description=settings.PROJECT_DESCRIPTION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Initialize database tables
+Base.metadata.create_all(bind=engine)
 
 # Debug middleware to log all requests
 # @app.middleware("http")

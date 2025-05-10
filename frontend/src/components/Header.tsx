@@ -23,7 +23,8 @@ import {
   InputLabel,
   SelectChangeEvent,
   Snackbar,
-  Alert
+  Alert,
+  InputAdornment
 } from '@mui/material';
 import { 
   Code, 
@@ -37,11 +38,13 @@ import {
   KeyboardArrowDown,
   SmartToy,
   Visibility,
-  VisibilityOff 
+  VisibilityOff, 
+  Login
 } from '@mui/icons-material';
-import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import apiService, { SettingsUpdateRequest } from '../services/apiService';
+import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import apiService, { SettingsUpdateRequest, UserResponse } from '../services/apiService';
 
 interface HeaderProps {
   darkMode: boolean;
@@ -62,6 +65,10 @@ const defaultUser: UserInfo = {
 
 const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
   const theme = useTheme();
+  const navigate = useNavigate();
+  
+  // Authentication state
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   
   // User info state
   const [userInfo, setUserInfo] = useState<UserInfo>(defaultUser);
@@ -90,6 +97,77 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSeverity, setAlertSeverity] = useState<'success' | 'error'>('success');
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+
+  // Check login status on initial load
+  useEffect(() => {
+    checkAuthStatus();
+    
+    // Load settings on mount
+    loadSettings();
+  }, []);
+  
+  // Check if user is logged in and load user data
+  const checkAuthStatus = async () => {
+    try {
+      if (apiService.isLoggedIn()) {
+        // Try to get user from localStorage first for immediate display
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser) as UserResponse;
+          setUserInfo({
+            name: userData.full_name || userData.username,
+            email: userData.email,
+            avatar: userData.avatar
+          });
+        }
+        
+        setIsLoggedIn(true);
+        
+        // Then try to refresh user data from server
+        try {
+          const currentUser = await apiService.getCurrentUser();
+          setUserInfo({
+            name: currentUser.full_name || currentUser.username,
+            email: currentUser.email,
+            avatar: currentUser.avatar
+          });
+          
+          // Update stored user data
+          localStorage.setItem('user', JSON.stringify(currentUser));
+        } catch (err) {
+          console.error('Error refreshing user data:', err);
+          // If token is invalid, logout
+          if (axios.isAxiosError(err) && err.response?.status === 401) {
+            handleLogout();
+          }
+        }
+      } else {
+        setIsLoggedIn(false);
+        setUserInfo(defaultUser);
+      }
+    } catch (err) {
+      console.error('Error checking auth status:', err);
+      setIsLoggedIn(false);
+      setUserInfo(defaultUser);
+    }
+  };
+  
+  // Load settings from API
+  const loadSettings = async () => {
+    try {
+      if (apiService.isLoggedIn()) {
+        // If logged in, get full settings
+        const settings = await apiService.getSettings();
+        if (settings) {
+          setAiModel(settings.ai_provider || 'gemini');
+          // Don't set API keys directly in UI for security reasons
+        }
+      }
+      // Removed public settings handling since the endpoint was removed
+    } catch (err) {
+      console.error('Error loading settings:', err);
+    }
+  };
   
   // Handlers for user menu
   const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -102,6 +180,13 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
   
   // Handlers for settings menu
   const handleSettingsMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    if (!isLoggedIn) {
+      // If not logged in, show login alert
+      setAlertSeverity('error');
+      setAlertMessage('Please log in to access settings');
+      setAlertOpen(true);
+      return;
+    }
     setSettingsAnchorEl(event.currentTarget);
   };
   
@@ -120,9 +205,41 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
     setEditUserDialogOpen(false);
   };
   
-  const handleEditUserSave = () => {
-    setUserInfo(newUserInfo);
-    setEditUserDialogOpen(false);
+  // Handler for user edit save
+  const handleEditUserSave = async () => {
+    try {
+      // Only update if logged in
+      if (isLoggedIn) {
+        const result = await apiService.updateUser({
+          full_name: newUserInfo.name,
+          email: newUserInfo.email
+        });
+        
+        // Update local state
+        setUserInfo({
+          name: result.full_name || result.username,
+          email: result.email,
+          avatar: result.avatar
+        });
+        
+        // Update stored user data
+        localStorage.setItem('user', JSON.stringify(result));
+        
+        // Show success message
+        setAlertSeverity('success');
+        setAlertMessage('Profile updated successfully');
+        setAlertOpen(true);
+      }
+    } catch (err: any) {
+      console.error('Error updating user:', err);
+      
+      // Show error message
+      setAlertSeverity('error');
+      setAlertMessage(err.response?.data?.detail || 'Failed to update profile');
+      setAlertOpen(true);
+    } finally {
+      setEditUserDialogOpen(false);
+    }
   };
   
   // Handler for model change
@@ -143,11 +260,11 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
     // Make sure we have the correct API key for the selected model
     if (aiModel !== 'gemini' && aiModel !== 'openai') {
       setAlertSeverity('error');
-      setAlertMessage('Please select a valid AI model (Gemini or OpenAI)');
+      setAlertMessage('Invalid AI provider. Must be "gemini" or "openai"');
       setAlertOpen(true);
       return;
     }
-
+    
     try {
       setIsSettingsSaving(true);
       
@@ -156,31 +273,60 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
         api_key: apiKey,
         serper_api_key: serperApiKey
       };
-    
+      
+      // Save settings via API
       const response = await apiService.updateSettings(settings);
       
-      setAlertSeverity('success');
-      setAlertMessage('Settings updated successfully');
-      setAlertOpen(true);
-      handleSettingsMenuClose();
-    } catch (error) {
-      console.error('Error saving settings:', error);
+      if (response.success) {
+        setAlertSeverity('success');
+        setAlertMessage(response.message);
+        setAlertOpen(true);
+        
+        // Close settings menu
+        handleSettingsMenuClose();
+      } else {
+        setAlertSeverity('error');
+        setAlertMessage('Failed to update settings');
+        setAlertOpen(true);
+      }
+    } catch (error: any) {
+      console.error('Error updating settings:', error);
       setAlertSeverity('error');
-      setAlertMessage('Failed to update settings. Please try again.');
+      setAlertMessage(error.response?.data?.detail || 'Failed to update settings');
       setAlertOpen(true);
     } finally {
       setIsSettingsSaving(false);
     }
   };
   
-  // Handler for closing alert
+  // Handler for alert close
   const handleAlertClose = () => {
     setAlertOpen(false);
   };
+  
+  // Handler for logout
+  const handleLogout = () => {
+    apiService.logout();
+    setIsLoggedIn(false);
+    setUserInfo(defaultUser);
+    handleUserMenuClose();
+    
+    // Show success message
+    setAlertSeverity('success');
+    setAlertMessage('Logged out successfully');
+    setAlertOpen(true);
+  };
+  
+  // Handler for login button click
+  const handleLoginClick = () => {
+    navigate('/login');
+    handleUserMenuClose();
+  };
 
   return (
-    <AppBar position="static" elevation={0} color="primary">
+    <AppBar position="static" elevation={4}>
       <Toolbar>
+        {/* Logo and App Name */}
         <Box display="flex" alignItems="center" component={Link} to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
           <Code sx={{ mr: 1 }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
@@ -235,33 +381,44 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
           transformOrigin={{ horizontal: 'right', vertical: 'top' }}
           anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         >
-          <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center' }}>
-            <Avatar sx={{ mr: 1.5 }}>
-              {userInfo.name.charAt(0).toUpperCase()}
-            </Avatar>
-            <Box>
-              <Typography variant="subtitle1">{userInfo.name}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {userInfo.email}
-              </Typography>
-            </Box>
-          </Box>
-          
-          <Divider sx={{ my: 1 }} />
-          
-          <MenuItem onClick={handleEditUserOpen}>
-            <ListItemIcon>
-              <Edit fontSize="small" />
-            </ListItemIcon>
-            Update Profile
-          </MenuItem>
-          
-          <MenuItem onClick={handleUserMenuClose}>
-            <ListItemIcon>
-              <Logout fontSize="small" />
-            </ListItemIcon>
-            Sign Out
-          </MenuItem>
+          {isLoggedIn ? (
+            <>
+              <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center' }}>
+                <Avatar sx={{ mr: 1.5 }}>
+                  {userInfo.name.charAt(0).toUpperCase()}
+                </Avatar>
+                <Box>
+                  <Typography variant="subtitle1">{userInfo.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {userInfo.email}
+                  </Typography>
+                </Box>
+              </Box>
+              
+              <Divider sx={{ my: 1 }} />
+              
+              <MenuItem onClick={handleEditUserOpen}>
+                <ListItemIcon>
+                  <Edit fontSize="small" />
+                </ListItemIcon>
+                Update Profile
+              </MenuItem>
+              
+              <MenuItem onClick={handleLogout}>
+                <ListItemIcon>
+                  <Logout fontSize="small" />
+                </ListItemIcon>
+                Sign Out
+              </MenuItem>
+            </>
+          ) : (
+            <MenuItem onClick={handleLoginClick}>
+              <ListItemIcon>
+                <Login fontSize="small" />
+              </ListItemIcon>
+              Sign In
+            </MenuItem>
+          )}
         </Menu>
         
         {/* Settings Menu */}
@@ -288,112 +445,123 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
           transformOrigin={{ horizontal: 'right', vertical: 'top' }}
           anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         >
-          <Typography variant="subtitle2" sx={{ px: 2, py: 0.5, fontWeight: 'bold' }}>
-            Application Settings
-          </Typography>
-          
-          <Divider sx={{ my: 0.5 }} />
-          
-          {/* Theme Toggle */}
-          <MenuItem onClick={toggleDarkMode} sx={{ height: 40 }}>
-            <ListItemIcon sx={{ minWidth: '30px' }}>
-              {darkMode ? <Brightness7 fontSize="small" /> : <Brightness4 fontSize="small" />}
-            </ListItemIcon>
-            <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
-              {darkMode ? 'Light Mode' : 'Dark Mode'}
+          <Box sx={{ px: 2, py: 1 }}>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              <SmartToy sx={{ fontSize: 20, verticalAlign: 'middle', mr: 0.75 }} /> 
+              AI Settings
             </Typography>
-            <Switch 
-              edge="end" 
-              size="small"
-              checked={darkMode} 
-              onClick={(e) => e.stopPropagation()} 
-              onChange={toggleDarkMode}
+            
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={darkMode}
+                  onChange={toggleDarkMode}
+                  color="primary"
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {darkMode ? 
+                    <Brightness7 fontSize="small" sx={{ mr: 1 }} /> :
+                    <Brightness4 fontSize="small" sx={{ mr: 1 }} />
+                  }
+                  <Typography variant="body2">
+                    {darkMode ? "Light Mode" : "Dark Mode"}
+                  </Typography>
+                </Box>
+              }
+              sx={{ mb: 1.5 }}
             />
-          </MenuItem>
-          
-          {/* AI Model Selection */}
-          <Box sx={{ px: 2, py: 0.5 }}>
-            <FormControl fullWidth size="small" sx={{ mb: 1.5, mt: 0.5 }}>
-              <InputLabel id="ai-model-label" sx={{ fontSize: '0.9rem' }}>AI Model</InputLabel>
-              <Select
-                labelId="ai-model-label"
-                id="ai-model-select"
-                value={aiModel}
-                label="AI Model"
-                onChange={handleModelChange}
-                sx={{ fontSize: '0.9rem' }}
+            
+            {/* AI Model Selection */}
+            <Box sx={{ px: 2, py: 0.5 }}>
+              <FormControl fullWidth size="small" sx={{ mb: 1.5, mt: 0.5 }}>
+                <InputLabel id="ai-model-label" sx={{ fontSize: '0.9rem' }}>AI Model</InputLabel>
+                <Select
+                  labelId="ai-model-label"
+                  id="ai-model-select"
+                  value={aiModel}
+                  label="AI Model"
+                  onChange={handleModelChange}
+                  sx={{ fontSize: '0.9rem' }}
+                >
+                  <MenuItem value="gemini">Google Gemini</MenuItem>
+                  <MenuItem value="openai">OpenAI GPT</MenuItem>
+                </Select>
+              </FormControl>
+              
+              {/* API Key Input */}
+              <TextField 
+                label="API Key" 
+                variant="outlined" 
+                fullWidth 
+                size="small"
+                type={showApiKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                sx={{ mb: 1.5, '& .MuiInputLabel-root': { fontSize: '0.9rem' } }}
+                InputProps={{ 
+                  style: { fontSize: '0.9rem' },
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        aria-label="toggle api key visibility"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        edge="end"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {showApiKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+              
+              {/* Serper API Key Input */}
+              <TextField 
+                label="Serper API Key" 
+                variant="outlined" 
+                fullWidth 
+                size="small"
+                type={showSerperApiKey ? "text" : "password"}
+                value={serperApiKey}
+                onChange={(e) => setSerperApiKey(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                sx={{ mb: 1 }}
+                InputProps={{ 
+                  style: { fontSize: '0.9rem' },
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        aria-label="toggle serper api key visibility"
+                        onClick={() => setShowSerperApiKey(!showSerperApiKey)}
+                        edge="end"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {showSerperApiKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+                InputLabelProps={{ style: { fontSize: '0.9rem' } }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, mt: -0.5 }}>
+                Used for web search functionality
+              </Typography>
+              
+              <Button 
+                variant="contained" 
+                size="small" 
+                fullWidth
+                onClick={handleSaveSettings}
+                disabled={isSettingsSaving}
               >
-                <MenuItem value="gemini">Google Gemini</MenuItem>
-                <MenuItem value="openai">OpenAI GPT</MenuItem>
-              </Select>
-            </FormControl>
-            
-            {/* API Key Input */}
-            <TextField 
-              label="API Key" 
-              variant="outlined" 
-              fullWidth 
-              size="small"
-              type={showApiKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              sx={{ mb: 1.5, '& .MuiInputLabel-root': { fontSize: '0.9rem' } }}
-              InputProps={{ 
-                style: { fontSize: '0.9rem' },
-                endAdornment: (
-                  <IconButton
-                    size="small"
-                    aria-label="toggle api key visibility"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    edge="end"
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    {showApiKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                  </IconButton>
-                )
-              }}
-            />
-            
-            {/* Serper API Key Input */}
-            <TextField 
-              label="Serper API Key" 
-              variant="outlined" 
-              fullWidth 
-              size="small"
-              type={showSerperApiKey ? "text" : "password"}
-              value={serperApiKey}
-              onChange={(e) => setSerperApiKey(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              sx={{ mb: 1 }}
-              InputProps={{ 
-                style: { fontSize: '0.9rem' },
-                endAdornment: (
-                  <IconButton
-                    size="small"
-                    aria-label="toggle serper api key visibility"
-                    onClick={() => setShowSerperApiKey(!showSerperApiKey)}
-                    edge="end"
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    {showSerperApiKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                  </IconButton>
-                )
-              }}
-              InputLabelProps={{ style: { fontSize: '0.9rem' } }}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, mt: -0.5 }}>
-              Used for web search functionality
-            </Typography>
-            
-            <Button 
-              variant="contained" 
-              size="small" 
-              fullWidth
-              onClick={handleSaveSettings}
-            >
-              Save Settings
-            </Button>
+                {isSettingsSaving ? 'Saving...' : 'Save Settings'}
+              </Button>
+            </Box>
           </Box>
         </Menu>
         
@@ -432,11 +600,16 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
         {/* Alert Snackbar */}
         <Snackbar 
           open={alertOpen} 
-          autoHideDuration={4000} 
+          autoHideDuration={6000} 
           onClose={handleAlertClose}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          <Alert onClose={handleAlertClose} severity={alertSeverity} sx={{ width: '100%' }}>
+          <Alert 
+            onClose={handleAlertClose} 
+            severity={alertSeverity}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
             {alertMessage}
           </Alert>
         </Snackbar>

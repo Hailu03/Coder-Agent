@@ -5,136 +5,16 @@ This module defines the Researcher Agent that gathers information from external 
 
 import logging
 import json
-import re
 import asyncio
-import aiohttp
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from .base import Agent
 from ..services.ai_service import AIService
 from ..utils import clean_language_name
-from ..core.config import settings
-from mcp.client.sse import sse_client
-from mcp import ClientSession
+from ..services.mcp import MCPServer
 
 # Configure logging
 logger = logging.getLogger("agents.researcher")
-
-
-class MCPServer:
-    """Client for interacting with the MCP Server."""
-    
-    def __init__(self, mcp_url: str = None):
-        """Initialize the MCP Server client.
-        
-        Args:
-            mcp_url: URL to the MCP server
-        """
-        self.mcp_url = mcp_url or settings.MCP_URL
-        logger.info(f"Initialized MCP Server client with URL: {self.mcp_url}")
-        self.connection_validated = False
-    
-    async def validate_connection(self) -> bool:
-        """Validates that the MCP server is reachable.
-        
-        Returns:
-            True if connection is successful, False otherwise
-        """
-        try:
-            # Attempt to connect to MCP server
-            async with sse_client(url=self.mcp_url, headers=None, timeout=5) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    tools = await session.list_tools()
-                    if tools and hasattr(tools, 'tools') and any(t.name == "search" for t in tools.tools):
-                        self.connection_validated = True
-                        return True
-                    else:
-                        logger.warning("MCP server connected but search tool not found")
-                        return False
-        except (asyncio.TimeoutError, ConnectionRefusedError) as e:
-            logger.error(f"MCP server connection timeout: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Error validating MCP server connection: {e}")
-            return False
-    
-    async def search(self, query: str) -> Dict[str, Any]:
-        """Search web using Serper API via MCP Server.
-        
-        Args:
-            query: Search query string
-            
-        Returns:
-            JSON response from Serper API or fallback response
-        """
-        # First validate connection if needed
-        if not self.connection_validated:
-            connection_ok = await self.validate_connection()
-            if not connection_ok:
-                return self._create_fallback_response(query)
-                
-        try:
-            # Connect to MCP server via SSE transport with timeout
-            async with sse_client(url=self.mcp_url, headers=None, timeout=10) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    # Call search tool
-                    logger.info(f"Calling MCP search with query: '{query}'")
-                    result = await asyncio.wait_for(
-                        session.call_tool("search", {"query": query}),
-                        timeout=15
-                    )
-                    # Parse JSON result
-                    if isinstance(result, str):
-                        try:
-                            return json.loads(result)
-                        except json.JSONDecodeError:
-                            logger.error(f"Invalid JSON response from MCP search: {result[:100]}...")
-                            return self._create_fallback_response(query)
-                    # Xử lý đối tượng CallToolResult không phải string
-                    elif hasattr(result, 'json') and callable(getattr(result, 'json')):
-                        # Nếu đối tượng có phương thức json(), gọi nó
-                        return result.json()
-                    elif hasattr(result, '__dict__'):
-                        # Nếu đối tượng có __dict__, chuyển đổi thành dictionary
-                        return result.__dict__
-                    else:
-                        # Cuối cùng, thử chuyển đổi object thành string rồi parsing
-                        try:
-                            return json.loads(json.dumps(result, default=lambda o: f"{o.__class__.__name__}"))
-                        except:
-                            logger.error(f"Cannot convert result to JSON: {type(result)}")
-                            return self._create_fallback_response(query)
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout while searching with MCP Server for query: '{query}'")
-            return self._create_fallback_response(query)
-        except Exception as e:
-            logger.error(f"Error searching with MCP Server for query: '{query}': {e}")
-            return self._create_fallback_response(query)
-            
-    def _create_fallback_response(self, query: str) -> Dict[str, Any]:
-        """Create a fallback response when search fails.
-        
-        Args:
-            query: The original search query
-            
-        Returns:
-            A minimal response with the search query
-        """
-        logger.info(f"Creating fallback response for query: '{query}'")
-        return {
-            "searchParameters": {
-                "q": query
-            },
-            "organic": [
-                {
-                    "title": f"Fallback result for: {query}",
-                    "snippet": f"The search for '{query}' could not be completed. Using built-in knowledge instead."
-                }
-            ]
-        }
-
 
 class ResearchAgent(Agent):
     """Agent responsible for gathering information from external sources."""
@@ -328,8 +208,8 @@ class ResearchAgent(Agent):
                 "when_to_use": "When to use this library"
             }}
             """
-            
-            summary = await self.ai_service.generate_structured_output(summarize_prompt, {
+
+            output_schema = {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
@@ -337,12 +217,17 @@ class ResearchAgent(Agent):
                     "key_features": {"type": "array", "items": {"type": "string"}},
                     "usage_example": {"type": "string"},
                     "when_to_use": {"type": "string"}
-                }
-            })
+                },
+                "required": ["name", "description", "key_features", "usage_example", "when_to_use"],
+                "additionalProperties": False
+            }
+            
+            summary = await self.ai_service.generate_structured_output(summarize_prompt, output_schema)
             
             # Create simplified summary
             simple_summary = f"{library}: {summary.get('description', '')}. {summary.get('when_to_use', '')}"
-            
+            logger.info(f"Library summary: {simple_summary}")
+
             return {
                 "topic": library,
                 "topic_type": "library",
@@ -406,12 +291,14 @@ class ResearchAgent(Agent):
                     "complexity": {"type": "string"},
                     "use_cases": {"type": "array", "items": {"type": "string"}},
                     "code_implementation": {"type": "string"}
-                }
+                },
+                "required": ["algorithm_name", "description", "complexity", "code_implementation", "use_cases"],
+                "additionalProperties": False
             })
-            
             # Create simplified summary
             simple_summary = f"{algorithm}: {summary.get('description', '')}. Complexity: {summary.get('complexity', '')}"
-            
+            logger.info(f"Algorithm summary: {simple_summary}")
+
             return {
                 "topic": algorithm,
                 "topic_type": "algorithm",
@@ -483,16 +370,21 @@ class ResearchAgent(Agent):
                         "properties": {
                             "operation": {"type": "string"},
                             "complexity": {"type": "string"}
-                        }
+                        },
+                        "required": ["operation", "complexity"],
+                        "additionalProperties": False
                     }},
                     "code_example": {"type": "string"},
                     "use_cases": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["data_structure", "description", "operations", "code_example", "use_cases"],
+                "additionalProperties": False
             })
             
             # Create simplified summary
             simple_summary = f"{data_structure}: {summary.get('description', '')}"
-            
+            logger.info(f"Data structure summary: {simple_summary}")
+
             return {
                 "topic": data_structure,
                 "topic_type": "data_structure",
@@ -563,7 +455,9 @@ class ResearchAgent(Agent):
                     "code_example": {"type": "string"},
                     "benefits": {"type": "array", "items": {"type": "string"}},
                     "drawbacks": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["pattern_name", "category", "description", "when_to_use", "code_example", "benefits", "drawbacks"],
+                "additionalProperties": False
             })
             
             # Create simplified summary
@@ -571,6 +465,7 @@ class ResearchAgent(Agent):
             
             # Create best practice
             best_practice = f"Use the {pattern} pattern when {summary.get('when_to_use', '')}"
+            logger.info(f"Design pattern summary: {simple_summary}")
             
             return {
                 "topic": pattern,
@@ -606,6 +501,9 @@ class ResearchAgent(Agent):
         try:
             # Search using MCP Server
             search_results = await self.mcp_server.search(search_query)
+
+            if isinstance(search_results, dict) and "results" in search_results:    
+                search_results = search_results["results"]
             
             if "error" in search_results:
                 logger.error(f"Error searching for performance considerations: {search_results['error']}")
@@ -637,7 +535,9 @@ class ResearchAgent(Agent):
                     "optimization_tips": {"type": "array", "items": {"type": "string"}},
                     "language_specific": {"type": "array", "items": {"type": "string"}},
                     "tools": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["optimization_tips", "language_specific", "tools"],
+                "additionalProperties": False
             })
             
             # Combine tips into a list
@@ -651,6 +551,7 @@ class ResearchAgent(Agent):
             
             # Create simplified summary
             simple_summary = "Performance considerations: " + "; ".join(all_tips[:3]) + "..."
+            logger.info(f"Performance summary: {simple_summary}")
             
             return {
                 "topic": "performance_optimization",
@@ -710,9 +611,13 @@ class ResearchAgent(Agent):
                         "properties": {
                             "practice": {"type": "string"},
                             "context": {"type": "string"}
-                        }
+                        },
+                        "required": ["practice", "context"],
+                        "additionalProperties": False
                     }}
-                }
+                },
+                "required": ["best_practices"],
+                "additionalProperties": False
             })
             
             # Extract best practices
@@ -730,6 +635,7 @@ class ResearchAgent(Agent):
             
             # Create simplified summary
             simple_summary = f"{language} best practices: " + "; ".join(best_practices[:3]) + "..."
+            logger.info(f"Best practices summary: {simple_summary}")
             
             return {
                 "topic": f"{language}_best_practices",
@@ -855,7 +761,9 @@ class ResearchAgent(Agent):
                         }
                     },
                     "summary": {"type": "object"}
-                }
+                },
+                "required": ["libraries", "best_practices", "code_examples", "summary"],
+                "additionalProperties": False
             })
             
             logger.info("Successfully generated research findings using AI knowledge")

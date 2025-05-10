@@ -1,54 +1,87 @@
-# React + TypeScript + Vite
+# Frontend Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This folder contains the React + TypeScript frontend application for the Collaborative Coding Agents project.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend provides a user-friendly interface for:
+- User registration and authentication
+- Problem description submission
+- Programming language selection
+- Visualization of solution generation process
+- Displaying generated code with syntax highlighting
+- Viewing code analysis and explanations
+- Managing AI provider settings
 
-## Expanding the ESLint configuration
+## Directory Structure
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- `src/`: Source code directory
+  - `components/`: Reusable UI components
+    - `Header.tsx`: Application header with navigation and user controls
+    - `Footer.tsx`: Application footer
+  - `pages/`: Page components
+    - `HomePage.tsx`: Landing page
+    - `LoginPage.tsx`: User authentication page
+    - `SolvePage.tsx`: Problem submission and solution generation
+    - `ResultPage.tsx`: Display solution and analysis
+    - `NotFoundPage.tsx`: 404 error page
+  - `services/`: API communication services
+    - `apiService.ts`: Backend API client implementation
+  - `utils/`: Utility functions
+  - `App.tsx`: Main application component
+  - `main.tsx`: Application entry point
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Setup and Development
+
+1. Install dependencies:
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+2. Start the development server:
+```bash
+npm run dev
 ```
+
+The application will be available at http://localhost:5173 by default.
+
+## Building for Production
+
+```bash
+npm run build
+```
+
+The build output will be in the `dist` directory.
+
+## Key Features
+
+### User Authentication
+- Registration and login system
+- Protected routes for authenticated users
+- User profile management
+
+### Problem Solving Interface
+- Rich text editor for describing programming problems
+- Support for multiple programming languages
+- Real-time progress tracking of the solution generation process
+
+### Solution Visualization
+- Syntax-highlighted code display
+- Downloadable solution code
+- Detailed analysis with tabs for:
+  - Code explanation
+  - Libraries and dependencies used
+  - Performance considerations
+  - Best practices followed
+  - Recommended file structure
+
+### Settings Management
+- AI provider configuration (Gemini/OpenAI)
+- API key management
+- Theme switching (dark/light mode)
+
+## Authentication Requirements
+
+The frontend implements authentication protection for:
+- Settings page: Only logged-in users can access and modify settings
+- Solve page: Authentication required before submitting coding problems

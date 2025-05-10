@@ -11,10 +11,7 @@ import logging
 
 logger = logging.getLogger("mcpserver")
 
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+# Removed dotenv usage; API key will be passed by agent
 
 
 class MCPTools:
@@ -34,14 +31,25 @@ class MCPTools:
 
     def _register_tools(self):
         @self.mcp.tool()
-        def search(query: str) -> str:
+        def search(query: str, api_key: str) -> str:
+            """
+            Search tool using Serper API.
+            Args:
+                query (str): The search query.
+                api_key (str): The API key for Serper API.
+            Returns:
+                str: The search results in JSON format.
+            """
+            logger.info(f"Search tool called with query: {query}")
+            if not api_key:
+                raise ValueError("API key is required for the search tool.")
             conn = http.client.HTTPSConnection("google.serper.dev")
 
             payload = json.dumps({
                 "q": query
             })
             headers = {
-                'X-API-KEY': os.getenv("SERPER_API_KEY"),
+                'X-API-KEY': api_key,
                 'Content-Type': 'application/json'
             }
 
@@ -53,7 +61,7 @@ class MCPTools:
 
             return data
 
-    def run_server(self, transport="sse", port=9001): # Giữ port ở đây để logging nếu muốn
+    def run_server(self, transport="sse", port=9000): # Giữ port ở đây để logging nếu muốn
         """
         Run the MCP server.
         Args:

@@ -39,14 +39,15 @@ class PlannerAgent(Agent):
         
         logger.info(f"Planning solution for problem in {language}")
         
-        prompt = f"""
-        You are an expert software architecture and design specialist. I need you to analyze the following programming problem and create a detailed solution plan.
+        prompt = f"""You are an expert software architecture and design specialist. I need you to analyze the following programming problem and create a detailed solution plan.
         
-        PROBLEM REQUIREMENTS:
+        # PROBLEM REQUIREMENTS:
         {requirements}
         
-        TARGET LANGUAGE: {language}
+        # TARGET LANGUAGE: 
+        {language}
         
+        # INSTRUCTIONS:
         Please provide a comprehensive analysis of the problem and a detailed solution plan that includes:
         1. A clear problem statement and understanding of the requirements
         2. Key algorithms, data structures, or design patterns that would be appropriate
@@ -55,28 +56,65 @@ class PlannerAgent(Agent):
         5. Required libraries or frameworks that would be helpful
         6. Any performance considerations
         
-        Structure your response as a JSON object for easy parsing.
+        # OUTPUT FORMAT:
+        *   Structure your response as a JSON object for easy parsing.
+        *   For all lists (recommended_libraries, data_structures, algorithms, design_patterns), provide ONLY the names without any descriptions or explanations.
         """
         
         # Output schema for structured response
         output_schema = {
-            "problem_analysis": "string",
-            "approach": ["string"],
-            "recommended_libraries": ["string"],
-            "data_structures": ["string"],
-            "algorithms": ["string"],
-            "design_patterns": ["string"],
-            "edge_cases": ["string"],
-            "performance_considerations": ["string"]
+            "type": "object",
+            "properties": {
+                "problem_analysis": {"type": "string"},
+                "approach": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "recommended_libraries": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "data_structures": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "algorithms": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "design_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "edge_cases": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "performance_considerations": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            },
+            "required": [
+                "problem_analysis",
+                "approach",
+                "recommended_libraries",
+                "data_structures",
+                "algorithms",
+                "design_patterns",
+                "edge_cases",
+                "performance_considerations"
+            ],
+            "additionalProperties": False
         }
-        
+
         response = await self.generate_structured_output(prompt, output_schema)
-        
+        print(f"Response from planning: {response}")
+
         if not response:
-            logger.warning("Failed to generate structured plan, falling back to text generation")
-            text_response = await self.generate_text(prompt)
+            logger.warning("Failed to generate structured plan")
             return {
-                "problem_analysis": text_response,
+                "problem_analysis": '',
                 "approach": [],
                 "recommended_libraries": [],
                 "data_structures": [],

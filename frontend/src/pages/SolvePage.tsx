@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Container, 
@@ -54,6 +54,7 @@ import {
   FormatIndentIncrease
 } from '@mui/icons-material';
 import axios from 'axios';
+import apiService from '../services/apiService';
 
 // Available programming languages
 const LANGUAGES = [
@@ -74,6 +75,14 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 const SolvePage = () => {
   const navigate = useNavigate();
   const theme = useTheme();
+  
+  // Authentication check
+  useEffect(() => {
+    // Check if user is logged in, if not redirect to login page
+    if (!apiService.isLoggedIn()) {
+      navigate('/login', { state: { from: '/solve', message: 'Please log in to access the Solve page' } });
+    }
+  }, [navigate]);
   
   // Form state
   const [requirements, setRequirements] = useState('');

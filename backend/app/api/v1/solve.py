@@ -3,7 +3,7 @@
 This module defines the API routes for submitting and retrieving coding problem solutions.
 """
 
-from fastapi import APIRouter, Body, HTTPException, Request, Response, BackgroundTasks
+from fastapi import APIRouter, Body, HTTPException, Request, Response, BackgroundTasks, Depends
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from typing import Optional, Dict, List, Any, Callable
@@ -11,9 +11,13 @@ import logging
 import json
 import uuid
 from datetime import datetime
+from sqlalchemy.orm import Session
 
 from ...core.orchestrator import AgentOrchestrator
 from ...models.models import TaskStatus, SolveRequest, TaskResponse, SolutionResponse
+from ...auth.deps import get_current_active_user
+from ...db.models import User, Task
+from ...db.database import get_db
 
 # Configure logging
 logger = logging.getLogger("api.solve")
@@ -21,43 +25,48 @@ logger = logging.getLogger("api.solve")
 # Create router 
 router = APIRouter()
 
-# In-memory storage for tasks (in a production environment, this would be a database)
-tasks = {}
-
 @router.post("/", response_model=TaskResponse)
-async def solve_problem(request: Request, background_tasks: BackgroundTasks, data: SolveRequest = Body(...)):
+async def solve_problem(
+    request: Request, 
+    background_tasks: BackgroundTasks, 
+    data: SolveRequest = Body(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Submit a problem to be solved.
     
     Args:
         request: The HTTP request
         background_tasks: FastAPI background tasks
         data: The problem details
+        current_user: The authenticated user
+        db: Database session
         
     Returns:
         Task information with a unique ID
     """
     try:
-        logger.info(f"Received solve request: {data}")
+        logger.info(f"Received solve request from user {current_user.username}: {data}")
         
         # Generate task ID
         task_id = str(uuid.uuid4())
         
-        # Create task entry
-        tasks[task_id] = {
-            "status": TaskStatus.PENDING,
-            "created_at": datetime.now().isoformat(),
-            "requirements": data.requirements,
-            "language": data.language,
-            "additional_context": data.additional_context,
-            "solution": None,
-            "explanation": None,
-            "code_files": None,
-            "error": None,
-            "detailed_status": {
-                "phase": "planning",
-                "progress": 0
-            }
-        }
+        # Create task entry in database
+        detailed_status = {"phase": "planning", "progress": 0}
+        
+        db_task = Task(
+            id=task_id,
+            user_id=current_user.id,
+            status=TaskStatus.PENDING,
+            requirements=data.requirements,
+            language=data.language,
+            additional_context=data.additional_context,
+            detailed_status=detailed_status
+        )
+        
+        db.add(db_task)
+        db.commit()
+        db.refresh(db_task)
         
         # Process in background
         background_tasks.add_task(
@@ -71,8 +80,8 @@ async def solve_problem(request: Request, background_tasks: BackgroundTasks, dat
         return TaskResponse(
             task_id=task_id,
             status=TaskStatus.PENDING,
-            created_at=tasks[task_id]["created_at"],
-            detailed_status=tasks[task_id]["detailed_status"]
+            created_at=db_task.created_at.isoformat(),
+            detailed_status=detailed_status
         )
     
     except Exception as e:
@@ -83,33 +92,48 @@ async def solve_problem(request: Request, background_tasks: BackgroundTasks, dat
         )
 
 @router.get("/task/{task_id}", response_model=SolutionResponse)
-async def get_solution(request: Request, task_id: str):
+async def get_solution(
+    request: Request, 
+    task_id: str, 
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Get the solution for a specific task.
     
     Args:
         request: The HTTP request
         task_id: The unique ID of the task
+        current_user: The authenticated user
+        db: Database session
         
     Returns:
         The solution if available
     """
     try:
-        if task_id not in tasks:
+        # Query task from database
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        if not task:
             raise HTTPException(
                 status_code=404,
                 detail=f"Task with ID {task_id} not found"
             )
         
-        task = tasks[task_id]
+        # Verify that the task belongs to the requesting user
+        if task.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to access this task"
+            )
         
         return SolutionResponse(
             task_id=task_id,
-            status=task["status"],
-            solution=task.get("solution"),
-            explanation=task.get("explanation"),
-            code_files=task.get("code_files"),
-            error=task.get("error"),
-            detailed_status=task.get("detailed_status")
+            status=task.status,
+            solution=task.solution,
+            explanation=task.explanation,
+            code_files=task.code_files,
+            error=task.error,
+            detailed_status=task.detailed_status
         )
     
     except HTTPException:
@@ -122,33 +146,53 @@ async def get_solution(request: Request, task_id: str):
         )
 
 @router.post("/task/{task_id}/cancel", response_model=Dict[str, str])
-async def cancel_task(request: Request, task_id: str):
+async def cancel_task(
+    request: Request, 
+    task_id: str, 
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Cancel a running task.
     
     Args:
         request: The HTTP request
         task_id: The unique ID of the task
+        current_user: The authenticated user
+        db: Database session
         
     Returns:
         Status message
     """
     try:
-        if task_id not in tasks:
+        # Query task from database
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        if not task:
             raise HTTPException(
                 status_code=404,
                 detail=f"Task with ID {task_id} not found"
             )
         
-        task = tasks[task_id]
+        # Verify that the task belongs to the requesting user
+        if task.user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to cancel this task"
+            )
         
         # Only allow cancellation of pending or processing tasks
-        if task["status"] in [TaskStatus.PENDING, TaskStatus.PROCESSING]:
-            task["status"] = TaskStatus.FAILED
-            task["error"] = "Task cancelled by user"
-            logger.info(f"Task {task_id} cancelled by user")
+        if task.status in [TaskStatus.PENDING, TaskStatus.PROCESSING]:
+            task.status = TaskStatus.FAILED
+            task.error = "Task cancelled by user"
+            task.detailed_status = {"phase": "cancelled", "progress": 0}
+            
+            # Save changes to database
+            db.commit()
+            
+            logger.info(f"Task {task_id} cancelled by user {current_user.username}")
             return {"message": "Task cancelled successfully"}
         else:
-            return {"message": f"Task already in {task['status']} state, cannot cancel"}
+            return {"message": f"Task already in {task.status} state, cannot cancel"}
     
     except HTTPException:
         raise
@@ -157,6 +201,54 @@ async def cancel_task(request: Request, task_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to cancel task: {str(e)}"
+        )
+
+@router.get("/history", response_model=List[dict])
+async def get_task_history(
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Get the task history for the current user.
+    
+    Args:
+        request: The HTTP request
+        current_user: The authenticated user
+        db: Database session
+        skip: Number of records to skip (for pagination)
+        limit: Maximum number of records to return (for pagination)
+        
+    Returns:
+        List of tasks with basic information
+    """
+    try:
+        # Query tasks from database
+        tasks = db.query(Task).filter(
+            Task.user_id == current_user.id
+        ).order_by(Task.created_at.desc()).offset(skip).limit(limit).all()
+        
+        # Format task data for response
+        result = []
+        for task in tasks:
+            result.append({
+                "task_id": task.id,
+                "status": task.status,
+                "language": task.language,
+                "requirements": task.requirements[:100] + "..." if len(task.requirements) > 100 else task.requirements,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "completed": task.status == TaskStatus.COMPLETED,
+                "detailed_status": task.detailed_status
+            })
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error retrieving task history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve task history: {str(e)}"
         )
 
 async def process_solution_task(task_id: str, requirements: str, language: str, additional_context: Optional[str] = None):
@@ -168,21 +260,39 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         language: The programming language
         additional_context: Additional context for the problem
     """
+    # Create DB session for background task
+    from ...db.database import SessionLocal
+    
+    db = SessionLocal()
     try:
+        # Get task from database
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            logger.error(f"Task {task_id} not found in database")
+            return
+        
         # Update task status
-        tasks[task_id]["status"] = TaskStatus.PROCESSING
+        task.status = TaskStatus.PROCESSING
+        db.commit()
         
         # Initialize orchestrator
         orchestrator = AgentOrchestrator()
         
         # Set up phase listener to update detailed status
         def phase_update_callback(phase: str, progress: Optional[float] = None):
-            if task_id in tasks:
-                tasks[task_id]["detailed_status"] = {
+            nonlocal task, db
+            try:
+                # Need to refresh task to prevent stale data issues
+                db.refresh(task)
+                
+                task.detailed_status = {
                     "phase": phase,
                     "progress": progress or 0
                 }
+                db.commit()
                 logger.info(f"Task {task_id} phase updated: {phase}")
+            except Exception as e:
+                logger.error(f"Error updating task phase: {str(e)}")
         
         # Solve the problem
         solution = await orchestrator.solve_problem(
@@ -205,6 +315,7 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
             "approach": solution.get("solution", {}).get("approach", []),
             "libraries": solution.get("solution", {}).get("libraries", []),
             "best_practices": solution.get("solution", {}).get("best_practices", []),
+            "file_structure": file_structure,  # Store the full file structure
         }
         
         # Convert file_structure dictionary to a list of file dictionaries
@@ -229,21 +340,26 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
                 })
         
         # Update task with solution
-        tasks[task_id].update({
-            "status": TaskStatus.COMPLETED,
-            "solution": solution_dict,
-            "explanation": problem_analysis,
-            "code_files": code_files_list,
-            "detailed_status": {"phase": "completed", "progress": 100}
-        })
+        task.status = TaskStatus.COMPLETED
+        task.solution = solution_dict
+        task.explanation = problem_analysis
+        task.code_files = code_files_list
+        task.detailed_status = {"phase": "completed", "progress": 100}
         
+        db.commit()
         logger.info(f"Task {task_id} completed successfully")
     
     except Exception as e:
         logger.error(f"Error processing task {task_id}: {str(e)}")
-        # Update task with error
-        tasks[task_id].update({
-            "status": TaskStatus.FAILED,
-            "error": str(e),
-            "detailed_status": {"phase": "failed", "progress": 0}
-        })
+        try:
+            # Update task with error
+            task = db.query(Task).filter(Task.id == task_id).first()
+            if task:
+                task.status = TaskStatus.FAILED
+                task.error = str(e)
+                task.detailed_status = {"phase": "failed", "progress": 0}
+                db.commit()
+        except Exception as db_error:
+            logger.error(f"Error updating task failure status: {str(db_error)}")
+    finally:
+        db.close()

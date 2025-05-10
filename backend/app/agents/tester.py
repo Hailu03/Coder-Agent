@@ -389,7 +389,8 @@ class TesterAgent(Agent):
         test_cases = []
         
         # Common test case patterns
-        example_pattern = r"Example[s]?[\s\d]*:[\s\n]*(Input[\s\n]*:[\s\n]*(.+?)[\s\n]*Output[\s\n]*:[\s\n]*(.+?)(?=Example|$))"
+        # Cải thiện mẫu regex để chỉ lấy kết quả thực tế, không bao gồm phần giải thích
+        example_pattern = r"Example[s]?[\s\d]*:[\s\n]*(Input[\s\n]*:[\s\n]*(.+?)[\s\n]*Output[\s\n]*:[\s\n]*([^\n\r]+))"
         example_matches = re.finditer(example_pattern, requirements, re.DOTALL | re.IGNORECASE)
         
         for i, match in enumerate(example_matches):
@@ -400,7 +401,7 @@ class TesterAgent(Agent):
             })
         
         # Test case pattern with "=>"
-        test_case_pattern = r"Test Case[\s\d]*:[\s\n]*(.+?)[\s\n]*=>[\s\n]*(.+?)[\s\n]*(?=Test Case|$)"
+        test_case_pattern = r"Test Case[\s\d]*:[\s\n]*(.+?)[\s\n]*=>[\s\n]*([^\n\r]+)"
         test_case_matches = re.finditer(test_case_pattern, requirements, re.DOTALL | re.IGNORECASE)
         
         for i, match in enumerate(test_case_matches):

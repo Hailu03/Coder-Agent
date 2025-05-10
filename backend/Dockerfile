@@ -18,4 +18,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8000
 
 # Default command - this will be overridden by docker-compose in development
-CMD ["python", "run.py"]
+CMD ["python","app/run.py"]
