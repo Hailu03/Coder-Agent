@@ -2,7 +2,6 @@ fastapi==0.110.0
 uvicorn==0.29.0
 python-dotenv==1.0.1
 aiohttp==3.9.5
-openai==1.14.0
 pytest==7.4.4
 grpcio==1.72.0rc1
 protobuf==4.25.3
@@ -15,7 +14,6 @@ pydantic-core==2.33.1
 pydantic-settings==2.9.1
 mcp==1.6.0
 httpx
-google-genai
 websockets
 # Authentication and database
 sqlalchemy==2.0.27
@@ -24,3 +22,6 @@ python-jose[cryptography]==3.3.0
 # Fixed versions for passlib and bcrypt compatibility
 passlib==1.7.4
 bcrypt==4.0.1
+
+openai
+google-genai

@@ -168,21 +168,56 @@ class DeveloperAgent(Agent):
         
         # Output schema for structured response
         output_schema = {
-            "code": "string",
-            "explanation": "string",
-            "libraries": ["string"],
-            "best_practices": ["string"],
-            "file_structure": {
-                "directories": [{
-                    "path": "string",
-                    "description": "string"
-                }],
-                "files": [{
-                    "path": "string",
-                    "description": "string",
-                    "components": ["string"]
-                }]
-            }
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+                "explanation": {"type": "string"},
+                "libraries": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "best_practices": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "file_structure": {
+                    "type": "object",
+                    "properties": {
+                        "directories": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string"},
+                                    "description": {"type": "string"}
+                                },
+                                "required": ["path", "description"],
+                                "additionalProperties": False
+                            }
+                        },
+                        "files": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "components": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    }
+                                },
+                                "required": ["path", "description", "components"],
+                                "additionalProperties": False
+                            }
+                        }
+                    },
+                    "required": ["directories", "files"],
+                    "additionalProperties": False
+                }
+            },
+            "required": ["code", "explanation", "libraries", "best_practices", "file_structure"],
+            "additionalProperties": False
         }
         
         response = await self.generate_structured_output(prompt, output_schema)

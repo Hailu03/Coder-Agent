@@ -15,6 +15,11 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+class SettingsUpdateRequest(BaseModel):
+    """Model for settings update requests."""
+    ai_provider: Optional[str] = None
+    api_key: Optional[str] = None
+    serper_api_key: Optional[str] = None
 
 class Agent(BaseModel):
     """Model representing an AI agent."""
@@ -72,3 +77,4 @@ class SolutionResponse(BaseModel):
     code_files: Optional[List[Dict[str, str]]] = None
     error: Optional[str] = None
     detailed_status: Optional[Dict[str, Any]] = None
+

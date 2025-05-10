@@ -3,18 +3,19 @@
 This module defines the API routes for updating and retrieving application settings.
 """
 
-from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Dict
 import os
 import logging
 import json
 from dotenv import load_dotenv, set_key
 from pathlib import Path
 from ...core.config import settings, ROOT_DIR, reload_settings
-from ...auth.deps import get_current_active_user
+from ...auth.deps import get_current_active_user, get_current_user
 from ...db.models import User
+from ...models.models import SettingsUpdateRequest
 
 # Configure logging
 logger = logging.getLogger("api.settings")
@@ -25,12 +26,6 @@ router = APIRouter()
 # ENV file path
 ENV_FILE = os.path.join(ROOT_DIR, ".env")
 
-# Request models
-class SettingsUpdateRequest(BaseModel):
-    """Model for settings update requests."""
-    ai_provider: Optional[str] = None
-    api_key: Optional[str] = None
-    serper_api_key: Optional[str] = None
 
 @router.post("/", response_model=dict)
 async def update_settings(
@@ -182,3 +177,16 @@ async def get_settings(
             status_code=500, 
             detail=f"Failed to retrieve settings: {str(e)}"
         )
+
+
+@router.get("/debug", response_model=Dict[str, Any])
+async def get_debug_settings(current_user = Depends(get_current_user)):
+    """Debug endpoint to check current settings values directly from config and env."""
+    logger.info(f"Debug settings check by user {current_user.username}")
+    return {
+        "config_ai_provider": settings.AI_PROVIDER,
+        "env_ai_provider": os.environ.get("AI_PROVIDER", "not set"),
+        "openai_key_exists": bool(settings.OPENAI_API_KEY),
+        "gemini_key_exists": bool(settings.GEMINI_API_KEY),
+        "reload_attempt": reload_settings()
+    }

@@ -208,8 +208,8 @@ class ResearchAgent(Agent):
                 "when_to_use": "When to use this library"
             }}
             """
-            
-            summary = await self.ai_service.generate_structured_output(summarize_prompt, {
+
+            output_schema = {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
@@ -217,8 +217,12 @@ class ResearchAgent(Agent):
                     "key_features": {"type": "array", "items": {"type": "string"}},
                     "usage_example": {"type": "string"},
                     "when_to_use": {"type": "string"}
-                }
-            })
+                },
+                "required": ["name", "description", "key_features", "usage_example", "when_to_use"],
+                "additionalProperties": False
+            }
+            
+            summary = await self.ai_service.generate_structured_output(summarize_prompt, output_schema)
             
             # Create simplified summary
             simple_summary = f"{library}: {summary.get('description', '')}. {summary.get('when_to_use', '')}"
@@ -287,7 +291,9 @@ class ResearchAgent(Agent):
                     "complexity": {"type": "string"},
                     "use_cases": {"type": "array", "items": {"type": "string"}},
                     "code_implementation": {"type": "string"}
-                }
+                },
+                "required": ["algorithm_name", "description", "complexity", "code_implementation", "use_cases"],
+                "additionalProperties": False
             })
             # Create simplified summary
             simple_summary = f"{algorithm}: {summary.get('description', '')}. Complexity: {summary.get('complexity', '')}"
@@ -364,11 +370,15 @@ class ResearchAgent(Agent):
                         "properties": {
                             "operation": {"type": "string"},
                             "complexity": {"type": "string"}
-                        }
+                        },
+                        "required": ["operation", "complexity"],
+                        "additionalProperties": False
                     }},
                     "code_example": {"type": "string"},
                     "use_cases": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["data_structure", "description", "operations", "code_example", "use_cases"],
+                "additionalProperties": False
             })
             
             # Create simplified summary
@@ -445,7 +455,9 @@ class ResearchAgent(Agent):
                     "code_example": {"type": "string"},
                     "benefits": {"type": "array", "items": {"type": "string"}},
                     "drawbacks": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["pattern_name", "category", "description", "when_to_use", "code_example", "benefits", "drawbacks"],
+                "additionalProperties": False
             })
             
             # Create simplified summary
@@ -489,6 +501,9 @@ class ResearchAgent(Agent):
         try:
             # Search using MCP Server
             search_results = await self.mcp_server.search(search_query)
+
+            if isinstance(search_results, dict) and "results" in search_results:    
+                search_results = search_results["results"]
             
             if "error" in search_results:
                 logger.error(f"Error searching for performance considerations: {search_results['error']}")
@@ -520,7 +535,9 @@ class ResearchAgent(Agent):
                     "optimization_tips": {"type": "array", "items": {"type": "string"}},
                     "language_specific": {"type": "array", "items": {"type": "string"}},
                     "tools": {"type": "array", "items": {"type": "string"}}
-                }
+                },
+                "required": ["optimization_tips", "language_specific", "tools"],
+                "additionalProperties": False
             })
             
             # Combine tips into a list
@@ -594,9 +611,13 @@ class ResearchAgent(Agent):
                         "properties": {
                             "practice": {"type": "string"},
                             "context": {"type": "string"}
-                        }
+                        },
+                        "required": ["practice", "context"],
+                        "additionalProperties": False
                     }}
-                }
+                },
+                "required": ["best_practices"],
+                "additionalProperties": False
             })
             
             # Extract best practices
@@ -740,7 +761,9 @@ class ResearchAgent(Agent):
                         }
                     },
                     "summary": {"type": "object"}
-                }
+                },
+                "required": ["libraries", "best_practices", "code_examples", "summary"],
+                "additionalProperties": False
             })
             
             logger.info("Successfully generated research findings using AI knowledge")

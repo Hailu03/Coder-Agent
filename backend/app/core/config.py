@@ -45,18 +45,16 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000", "http://localhost:80", "http://localhost", "http://localhost:5173", "http://frontend:5173", "http://frontend:80"]
     
     # AI providers
-    AI_PROVIDER: str = "gemini"  # "gemini" or "openai"
+    AI_PROVIDER: str = os.environ.get("AI_PROVIDER")  # Default to Gemini
     
     # Google Gemini settings
-    GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.0-flash-lite"
+    GEMINI_API_KEY: Optional[str] = os.environ.get("GEMINI_API_KEY", None)
+    GEMINI_MODEL: str = "gemini-2.0-flash"
     
     # OpenAI settings
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4.1-nano"
+    OPENAI_API_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY", None)
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # GitHub API settings
-    GITHUB_ACCESS_TOKEN: Optional[str] = None
     
     # External API settings
     SERPER_API_KEY: Optional[str] = None
@@ -106,17 +104,36 @@ def reload_settings():
         # Reload environment from .env file
         env_path = os.path.join(ROOT_DIR, ".env")
         if os.path.exists(env_path):
-            load_dotenv(env_path, override=True)
+            # Đọc file .env và cập nhật biến môi trường thủ công
+            with open(env_path, "r") as f:
+                env_file_content = f.read()
+            
+            # Phân tích từng dòng trong file .env
+            for line in env_file_content.splitlines():
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                    
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # Cập nhật biến môi trường hiện tại
+                    os.environ[key] = value
+                    logger.info(f"Updated environment variable: {key}")
+            
             logger.info(f"Reloaded environment variables from {env_path}")
         
         # Create a new settings object to pick up new values
         settings = Settings()
-        logger.info(f"Settings reloaded successfully. AI Provider: {settings.AI_PROVIDER}")
         
-        # Log status of API keys (without revealing them)
-        logger.info(f"Gemini API key set: {bool(settings.GEMINI_API_KEY)}")
+        # Log các thông tin cấu hình quan trọng
+        logger.info(f"Settings reloaded successfully.")
+        logger.info(f"AI Provider (from env): {os.environ.get('AI_PROVIDER')}")
+        logger.info(f"AI Provider (from settings): {settings.AI_PROVIDER}")
         logger.info(f"OpenAI API key set: {bool(settings.OPENAI_API_KEY)}")
-        logger.info(f"Serper API key set: {bool(settings.SERPER_API_KEY)}")
+        logger.info(f"Gemini API key set: {bool(settings.GEMINI_API_KEY)}")
         
         return True
     except Exception as e:
