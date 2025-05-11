@@ -46,6 +46,15 @@ export interface SolutionResponse {
   error?: string;
 }
 
+export interface TaskUpdateEvent {
+  task_id: string;
+  status: string;
+  detailed_status?: {
+    phase: string;
+    progress: number;
+  };
+}
+
 export interface SettingsUpdateRequest {
   ai_provider?: string;
   api_key?: string;
@@ -300,13 +309,98 @@ class ApiService {
   isLoggedIn(): boolean {
     return !!localStorage.getItem('token');
   }
-  
-  /**
+    /**
    * Logout user
    */
   logout(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+  }
+  
+  /**
+   * Connect to the SSE endpoint for real-time task updates
+   * @param onUpdate Callback function for task updates
+   * @param onError Callback function for errors
+   * @returns An object with a disconnect method
+   */  connectToTaskUpdates(onUpdate: (data: TaskUpdateEvent) => void, onError?: (error: any) => void): { disconnect: () => void } {
+    try {
+      console.log('Connecting to task updates stream');
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Create EventSource with token in URL as query parameter
+      // Using the special endpoint that accepts token as query param for EventSource
+      const eventSource = new EventSource(`${API_BASE_URL}/events/task-updates-token?token=${token}`, {
+        withCredentials: false
+      });
+      
+      // Set up event handlers
+      eventSource.addEventListener('task_update', (event: any) => {
+        try {
+          const data: TaskUpdateEvent = JSON.parse(event.data);
+          console.log('Task update received:', data);
+          onUpdate(data);
+        } catch (e) {
+          console.error('Error parsing task update event:', e);
+        }
+      });
+      
+      // Handle connection errors
+      eventSource.addEventListener('error', (event) => {
+        console.error('SSE connection error:', event);
+        
+        // Add extra diagnostic info to help troubleshoot
+        if (eventSource.readyState === EventSource.CONNECTING) {
+          console.log('EventSource is reconnecting...');
+        } else if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('EventSource connection is closed');
+          
+          // Try to reconnect after a short delay if the connection is closed
+          setTimeout(() => {
+            // Only attempt to reconnect if the connection is still closed
+            if (eventSource.readyState === EventSource.CLOSED) {
+              console.log('Attempting to reconnect to SSE...');
+              // We'll create a new connection by simulating a disconnect/reconnect
+              eventSource.close();
+              this.connectToTaskUpdates(onUpdate, onError);
+            }
+          }, 2000);
+        }
+        
+        if (onError) {
+          onError(event);
+        }
+      });
+      
+      // Add open event listener for debugging
+      eventSource.addEventListener('open', () => {
+        console.log('SSE connection opened successfully');
+      });
+      
+      // Add ping handler to keep connection alive
+      eventSource.addEventListener('ping', () => {
+        // This is just to keep the connection alive
+        // console.log('Ping received from server');
+      });
+      
+      // Return disconnect function
+      return {
+        disconnect: () => {
+          console.log('Disconnecting from task updates stream');
+          eventSource.close();
+        }
+      };
+    } catch (error) {
+      console.error('Error connecting to task updates:', error);
+      if (onError) {
+        onError(error);
+      }
+      // Return a no-op disconnect function
+      return { disconnect: () => {} };
+    }
   }
 }
 

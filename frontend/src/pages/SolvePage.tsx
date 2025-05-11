@@ -76,14 +76,6 @@ const SolvePage = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   
-  // Authentication check
-  useEffect(() => {
-    // Check if user is logged in, if not redirect to login page
-    if (!apiService.isLoggedIn()) {
-      navigate('/login', { state: { from: '/solve', message: 'Please log in to access the Solve page' } });
-    }
-  }, [navigate]);
-  
   // Form state
   const [requirements, setRequirements] = useState('');
   const [language, setLanguage] = useState('python');
@@ -91,6 +83,23 @@ const SolvePage = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
   const [requirementsFullscreen, setRequirementsFullscreen] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [sseConnection, setSseConnection] = useState<{ disconnect: () => void } | null>(null);
+  
+  // Authentication check
+  useEffect(() => {
+    // Check if user is logged in, if not redirect to login page
+    if (!apiService.isLoggedIn()) {
+      navigate('/login', { state: { from: '/solve', message: 'Please log in to access the Solve page' } });
+    }
+    
+    // Clean up SSE connection when component unmounts
+    return () => {
+      if (sseConnection) {
+        sseConnection.disconnect();
+      }
+    };
+  }, [navigate, sseConnection]);
   
   // Rich text editor state
   const [formatBold, setFormatBold] = useState(false);
@@ -196,7 +205,6 @@ const SolvePage = () => {
     setFontSize(size);
     handleFontSizeMenuClose();
   };
-
   // Handle form submission
   const handleSubmit = async () => {
     // Validate form
@@ -209,28 +217,30 @@ const SolvePage = () => {
     setIsSubmitting(true);
     setActiveStep(1); // Move to planning & research step
     
-    try {
-      // Submit request to the API
-      const response = await axios.post(`${API_BASE_URL}/solve`, {
+    try {      // Submit request to the API
+      const response = await apiService.solveProblem({
         requirements: requirements.trim(),
         language
       });
-      
-      // Get the task ID from the response
-      const taskId = response.data.task_id;
-      
-      // Poll for task completion
-      const intervalId = setInterval(async () => {
-        try {
-          const statusResponse = await axios.get(`${API_BASE_URL}/solve/task/${taskId}`);
-          const { status } = statusResponse.data;
+        // Get the task ID from the response
+      const taskId = response.task_id;
+      setCurrentTaskId(taskId);
+        // Set up SSE connection for real-time updates
+      console.log(`Setting up SSE connection for task ID: ${taskId}`);
+      const connection = apiService.connectToTaskUpdates((data) => {
+        // Only process updates for this task
+        if (data.task_id === taskId) {
+          console.log('Received task update:', data);
+          
+          const { status, detailed_status } = data;
           
           if (status === 'completed' || status === 'failed') {
-            clearInterval(intervalId);
             setIsSubmitting(false);
+            console.log(`Task ${taskId} ${status}`);
             
             if (status === 'completed') {
               // Navigate to result page if task completed successfully
+              console.log(`Navigating to result page for task ${taskId}`);
               navigate(`/result/${taskId}`);
             } else {
               // Show error if task failed
@@ -239,59 +249,79 @@ const SolvePage = () => {
             }
           } else if (status === 'processing') {
             // Update steps based on the detailed status if available
-            if (statusResponse.data.detailed_status) {
-              const phase = statusResponse.data.detailed_status.phase;
+            if (detailed_status) {
+              const phase = detailed_status.phase;
               
               // Map phase to step number
               if (phase === 'planning') {
                 setActiveStep(1); // Planning & Research step
               } else if (phase === 'research') {
                 setActiveStep(1); // Still in Research phase (same UI step)
+                // Log to verify we're receiving research phase updates
+                console.log('Research phase update received:', detailed_status);
               } else if (phase === 'code_generation') {
                 setActiveStep(2); // Code Generation step
+                console.log('Code generation phase update received:', detailed_status);
               } else if (phase === 'test_execution') {
                 setActiveStep(3); // Test Execution step
-              } else if (phase === 'refinement') {
+                console.log('Test execution phase update received:', detailed_status);
+              } else if (phase === 'refinement' || phase.startsWith('refinement_')) {
                 setActiveStep(4); // Code Refinement step
+                console.log('Refinement phase update received:', detailed_status);
               } else if (phase === 'completed') {
                 setActiveStep(4); // Keep at final step until navigation
+                console.log('Completion phase update received:', detailed_status);
+              } else if (phase === 'failed') {
+                console.log('Task failed:', detailed_status);
+                setError('Failed to generate code. Please try again.');
+                setIsSubmitting(false);
+                setActiveStep(0);
               }
             } else {
               // Fallback to default behavior if detailed status is not available
               setActiveStep(1); // Default to Planning & Research
             }
           }
-        } catch (err) {
-          clearInterval(intervalId);
-          setIsSubmitting(false);
-          
-          // Improved error handling with more specific error messages
-          if (axios.isAxiosError(err)) {
-            if (err.response) {
-              // The request was made and the server responded with a status code
-              // that falls out of the range of 2xx
-              const statusCode = err.response.status;
-              const errorMessage = err.response.data?.message || 'Unknown server error';
-              setError(`Error (${statusCode}): ${errorMessage}`);
-            } else if (err.request) {
-              // The request was made but no response was received
-              setError('No response from server. Please check your connection.');
-            } else {
-              // Something happened in setting up the request
-              setError(`Request error: ${err.message}`);
-            }
-          } else {
-            // For non-axios errors
-            setError(`Error checking task status: ${(err as Error).message || 'Unknown error'}`);
-          }
-          
-          setActiveStep(0);
+        }      }, (error) => {
+        console.error('SSE connection error:', error);
+        
+        // Provide more detailed error information
+        if (error instanceof Event && error.target instanceof EventSource) {
+          const eventSource = error.target;
+          console.log('EventSource readyState:', eventSource.readyState);
         }
-      }, 2000); // Poll every 2 seconds
+        
+        setError('Lost connection to server. Please try again. Check the console for details.');
+        setIsSubmitting(false);
+        setActiveStep(0);
+      });
       
-    } catch (err) {
+      // Save connection for cleanup later
+      setSseConnection(connection);
+      
+    } catch (err: any) {
       setIsSubmitting(false);
-      setError('Failed to submit requirements. Please try again.');
+      
+      // Improved error handling with more specific error messages
+      if (axios.isAxiosError(err)) {
+        if (err.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          const statusCode = err.response.status;
+          const errorMessage = err.response.data?.message || 'Unknown server error';
+          setError(`Error (${statusCode}): ${errorMessage}`);
+        } else if (err.request) {
+          // The request was made but no response was received
+          setError('No response from server. Please check your connection.');
+        } else {
+          // Something happened in setting up the request
+          setError(`Request error: ${err.message}`);
+        }
+      } else {
+        // For non-axios errors
+        setError(`Error submitting requirements: ${err.message || 'Unknown error'}`);
+      }
+      
       setActiveStep(0);
     }
   };
