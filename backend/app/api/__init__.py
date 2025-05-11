@@ -16,6 +16,7 @@ api_router = APIRouter()
 from .v1 import solve
 from .v1 import settings as settings_router
 from .v1 import auth as auth_router
+from .v1 import events as events_router
 
 # Include the solve routes
 api_router.include_router(solve.router, prefix="/solve", tags=["solve"])
@@ -25,3 +26,6 @@ api_router.include_router(settings_router.router, prefix="/settings", tags=["set
 
 # Include the authentication routes
 api_router.include_router(auth_router.router, prefix="/auth", tags=["auth"])
+
+# Include the events routes for real-time updates
+api_router.include_router(events_router.router, prefix="/events", tags=["events"])

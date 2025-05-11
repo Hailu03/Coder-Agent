@@ -10,6 +10,8 @@ from typing import Optional, Dict, List, Any, Callable
 import logging
 import json
 import uuid
+import asyncio
+import time  # Add this import
 from datetime import datetime
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from ...models.models import TaskStatus, SolveRequest, TaskResponse, SolutionRes
 from ...auth.deps import get_current_active_user
 from ...db.models import User, Task
 from ...db.database import get_db
+from .events import task_status_update
 
 # Configure logging
 logger = logging.getLogger("api.solve")
@@ -277,22 +280,40 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         
         # Initialize orchestrator
         orchestrator = AgentOrchestrator()
-        
-        # Set up phase listener to update detailed status
+          # Set up phase listener to update detailed status and send SSE updates
         def phase_update_callback(phase: str, progress: Optional[float] = None):
             nonlocal task, db
             try:
                 # Need to refresh task to prevent stale data issues
                 db.refresh(task)
                 
-                task.detailed_status = {
+                # Create a more detailed status message
+                detailed_status = {
                     "phase": phase,
                     "progress": progress or 0
                 }
+                task.detailed_status = detailed_status
                 db.commit()
-                logger.info(f"Task {task_id} phase updated: {phase}")
+                
+                # Create a sync version of the task_status_update call to ensure it completes
+                # before returning from this callback
+                loop = asyncio.get_event_loop()
+                update_future = asyncio.run_coroutine_threadsafe(
+                    task_status_update(
+                        task_id=task_id,
+                        user_id=task.user_id,
+                        status=task.status,
+                        detailed_status=detailed_status
+                    ),
+                    loop
+                )
+                
+                # Add small delay to ensure the update is processed before continuing
+                time.sleep(0.05)
+                
+                logger.info(f"Task {task_id} phase updated: {phase}, progress: {progress}")
             except Exception as e:
-                logger.error(f"Error updating task phase: {str(e)}")
+                logger.error(f"Error updating task phase: {str(e)}", exc_info=True)
         
         # Solve the problem
         solution = await orchestrator.solve_problem(
@@ -305,16 +326,15 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         # Get the code and other solution details
         solution_code = solution.get("solution", {}).get("code", "")
         problem_analysis = solution.get("solution", {}).get("problem_analysis", "")
-        file_structure = solution.get("solution", {}).get("file_structure", {})
-        
-        # Create properly formatted solution dictionary for the response
+        file_structure = solution.get("solution", {}).get("file_structure", {})        # Create properly formatted solution dictionary for the response
         solution_dict = {
             "code": solution_code,
-            "analysis": problem_analysis,
+            "problem_analysis": problem_analysis,  # Changed key from "analysis" to "problem_analysis" to match frontend
             "language": language,
             "approach": solution.get("solution", {}).get("approach", []),
             "libraries": solution.get("solution", {}).get("libraries", []),
             "best_practices": solution.get("solution", {}).get("best_practices", []),
+            "performance_considerations": solution.get("solution", {}).get("performance_considerations", []),
             "file_structure": file_structure,  # Store the full file structure
         }
         
@@ -338,28 +358,58 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
                     "content": solution_code,
                     "description": "Main solution file",
                 })
-        
-        # Update task with solution
-        task.status = TaskStatus.COMPLETED
+          # Update task with solution
         task.solution = solution_dict
         task.explanation = problem_analysis
         task.code_files = code_files_list
-        task.detailed_status = {"phase": "completed", "progress": 100}
+        detailed_status = {"phase": "completed", "progress": 100}
+        task.detailed_status = detailed_status
+        task.status = TaskStatus.COMPLETED
         
         db.commit()
-        logger.info(f"Task {task_id} completed successfully")
-    
+        
+        # Instead of using create_task, directly await the task_status_update call
+        # to ensure it's processed before returning
+        try:
+            await task_status_update(
+                task_id=task_id,
+                user_id=task.user_id,
+                status=TaskStatus.COMPLETED,
+                detailed_status=detailed_status
+            )
+            
+            # Small delay to ensure the update is processed
+            await asyncio.sleep(0.5)
+            
+            logger.info(f"Task {task_id} completed successfully and notification sent")
+        except Exception as notify_error:
+            logger.error(f"Error sending completion notification: {str(notify_error)}", exc_info=True)
+        
     except Exception as e:
-        logger.error(f"Error processing task {task_id}: {str(e)}")
+        logger.error(f"Error processing task {task_id}: {str(e)}", exc_info=True)
         try:
             # Update task with error
             task = db.query(Task).filter(Task.id == task_id).first()
             if task:
                 task.status = TaskStatus.FAILED
                 task.error = str(e)
-                task.detailed_status = {"phase": "failed", "progress": 0}
+                detailed_status = {"phase": "failed", "progress": 0}
+                task.detailed_status = detailed_status
                 db.commit()
+                
+                # Directly await the failure notification
+                await task_status_update(
+                    task_id=task_id,
+                    user_id=task.user_id,
+                    status=TaskStatus.FAILED,
+                    detailed_status=detailed_status
+                )
+                
+                # Small delay to ensure the update is processed
+                await asyncio.sleep(0.5)
+                
+                logger.info(f"Task {task_id} failure notification sent")
         except Exception as db_error:
-            logger.error(f"Error updating task failure status: {str(db_error)}")
+            logger.error(f"Error updating task failure status: {str(db_error)}", exc_info=True)
     finally:
         db.close()
