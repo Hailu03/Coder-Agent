@@ -218,28 +218,54 @@ class DeveloperAgent(Agent):
             },
             "required": ["code", "explanation", "libraries", "best_practices", "file_structure"],
             "additionalProperties": False
-        }
+        }        # Try to get structured output, with robust error handling
+        try:
+            response = await self.generate_structured_output(prompt, output_schema)
+        except Exception as e:
+            logger.error(f"Error during structured output generation: {e}")
+            response = {}
         
-        response = await self.generate_structured_output(prompt, output_schema)
-
-        # strip any markdown code block formatting from the code
-        response["code"] = self.strip_markdown_code_block(response["code"])
-        
+        # Ensure we have a valid response dictionary
+        if not isinstance(response, dict):
+            logger.warning(f"Response is not a dictionary: {type(response)}")
+            response = {}
+            
+        # Check if response is empty or missing required fields
         if not response:
             logger.warning("Failed to generate structured code response, falling back to text generation")
             text_response = await self.generate_text(prompt)
             return {
                 "code": text_response,
-                "explanation": "",
+                "explanation": "Generated as plain text due to structured output failure.",
                 "libraries": [],
                 "best_practices": [],
                 "file_structure": {}
             }
         
-        # Ensure the code field exists
-        if "code" not in response:
+        # Create a safe copy of response with all required fields
+        safe_response = {
+            "code": "",
+            "explanation": "",
+            "libraries": [],
+            "best_practices": [],
+            "file_structure": {"files": [], "directories": []}
+        }
+        
+        # Copy values from response, if they exist
+        for key in safe_response:
+            if key in response:
+                safe_response[key] = response[key]
+                
+        # If code field exists, clean it up
+        if safe_response["code"]:
+            safe_response["code"] = self.strip_markdown_code_block(safe_response["code"])
+        # If no code but explanation exists, use that
+        elif safe_response["explanation"]:
             logger.warning("No code field in response, using explanation as code")
-            response["code"] = response.get("explanation", "// No code generated")
+            safe_response["code"] = safe_response["explanation"]
+            
+        # Return the safe response with all required fields
+        return safe_response
         
         # Format the response
         formatted_response = {
@@ -485,13 +511,28 @@ class DeveloperAgent(Agent):
         Returns:
             The text with markdown code block formatting removed
         """
-        # Nhận diện code block markdown có hoặc không có tên ngôn ngữ
-        code_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", text)
-        if code_blocks:
-            # Nếu có nhiều code block, lấy cái đầu tiên
-            return code_blocks[0].strip()
-        # Nếu không có code block, trả về text gốc
-        return text.strip()
+        # Safety check for non-string inputs
+        if not isinstance(text, str):
+            logger.warning(f"Expected string for markdown stripping, got {type(text)}")
+            return str(text) if text is not None else ""
+            
+        try:
+            # Nhận diện code block markdown có hoặc không có tên ngôn ngữ
+            code_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", text)
+            if code_blocks:
+                # Nếu có nhiều code block, lấy cái đầu tiên
+                return code_blocks[0].strip()
+                
+            # Alternative pattern for code blocks without newlines after backticks
+            code_blocks = re.findall(r"```(?:\w+)?([\s\S]*?)```", text)
+            if code_blocks:
+                return code_blocks[0].strip()
+                
+            # Nếu không có code block, trả về text gốc
+            return text.strip()
+        except Exception as e:
+            logger.error(f"Error in strip_markdown_code_block: {e}")
+            return text
     
     async def _extract_file_structure(self, code: str, language: str) -> Dict[str, Any]:
         """Extract file structure from generated code.

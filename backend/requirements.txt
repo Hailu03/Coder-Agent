@@ -15,6 +15,7 @@ pydantic-settings==2.9.1
 mcp==1.6.0
 httpx
 websockets
+sse-starlette==1.6.5
 # Authentication and database
 sqlalchemy==2.0.27
 pymysql==1.1.0

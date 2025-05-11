@@ -51,6 +51,15 @@ class GeminiService(AIService):
         # Initialize the google-genai client
         self.client = genai.Client(api_key=self.api_key)
 
+        # Import fix helper
+        try:
+            from .ai_service_fix import gemini_structured_output
+            self._structured_output_helper = gemini_structured_output
+            logger.info("Loaded Gemini compatibility fixes")
+        except ImportError:
+            logger.warning("Could not load Gemini compatibility fixes")
+            self._structured_output_helper = None
+
         logger.info(f"Initialized GeminiService with model: {self.model_name}")
 
     async def generate_text(self, prompt: str) -> str:
@@ -66,7 +75,7 @@ class GeminiService(AIService):
         except Exception as e:
             logger.error(f"Error generating text with Gemini: {e}")
             return f"Error generating text: {e}"
-
+        
     async def generate_structured_output(
         self, prompt: str, output_schema: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -80,37 +89,167 @@ class GeminiService(AIService):
                 logger.error("Model name cannot be None in generate_structured_output")
                 return {}
             
-            # Sử dụng tính năng structured output của Gemini API
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.7,
-                    response_mime_type="application/json",
-                    # Truyền schema dưới dạng dictionary
-                    response_schema=output_schema
-                ),
-            )
+            # Xử lý schema để tương thích với Gemini
+            # Loại bỏ additionalProperties: False để tránh lỗi validation
+            cleaned_schema = self._clean_schema_for_gemini(output_schema)
             
-            # Xử lý kết quả
-            if hasattr(response, 'parsed') and response.parsed is not None:
-                # Trả về kết quả đã phân tích
-                return response.parsed
-            elif hasattr(response, 'text') and response.text:
-                # Nếu không có parsed, thử parse từ text
-                try:
-                    return json.loads(response.text)
-                except json.JSONDecodeError:
-                    logger.warning("Failed to parse response text as JSON, returning text")
-                    return {"result": response.text}
+            try:
+                # Sử dụng tính năng structured output của Gemini API
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        response_mime_type="application/json",
+                        # Truyền schema đã làm sạch
+                        response_schema=cleaned_schema
+                    ),
+                )
+                
+                # Xử lý kết quả
+                if hasattr(response, 'parsed') and response.parsed is not None:
+                    parsed_result = response.parsed
+                    # Thêm các trường bắt buộc bị thiếu dựa trên schema
+                    parsed_result = self._fix_missing_required_fields(parsed_result, output_schema)
+                    return parsed_result
+                elif hasattr(response, 'text') and response.text:
+                    # Nếu không có parsed, thử parse từ text
+                    try:
+                        json_result = json.loads(response.text)
+                        # Thêm các trường bắt buộc bị thiếu
+                        json_result = self._fix_missing_required_fields(json_result, output_schema)
+                        return json_result
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to parse response text as JSON, generating fallback")
+                        return self._generate_fallback_response(output_schema)
+            except Exception as e:
+                logger.error(f"Error during Gemini API call: {e}")
+                # Generate fallback response on any API error
+                return self._generate_fallback_response(output_schema)
             
             # Fallback
-            logger.warning("No valid structured output received, returning empty dict")
-            return {}
-            
+            logger.warning("No valid structured output received, generating fallback")
+            return self._generate_fallback_response(output_schema)
+                
         except Exception as e:
             logger.error(f"Error generating structured output with Gemini: {e}")
-            return {}
+            return self._generate_fallback_response(output_schema)
+            
+    def _generate_fallback_response(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a fallback response with default values based on the schema.
+        
+        Args:
+            schema: The output schema
+            
+        Returns:
+            A basic valid response matching the schema
+        """
+        result = {}
+        if not isinstance(schema, dict):
+            return result
+            
+        properties = schema.get("properties", {})
+        required_fields = schema.get("required", [])
+        
+        for field_name, field_schema in properties.items():
+            if field_name in required_fields:
+                field_type = field_schema.get("type", "")
+                if field_type == "string":
+                    result[field_name] = ""
+                elif field_type == "array":
+                    result[field_name] = []
+                elif field_type == "object":
+                    result[field_name] = {}
+                elif field_type == "number" or field_type == "integer":
+                    result[field_name] = 0
+                elif field_type == "boolean":
+                    result[field_name] = False
+                else:
+                    result[field_name] = None
+                    
+        return result
+    
+    def _clean_schema_for_gemini(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove problematic additionalProperties=False from schema for Gemini.
+        
+        Args:
+            schema: The original JSON schema
+            
+        Returns:
+            A cleaned schema compatible with Gemini
+        """
+        if not isinstance(schema, dict):
+            return schema
+            
+        cleaned = {}
+        
+        for key, value in schema.items():
+            # Skip additionalProperties field completely
+            if key == "additionalProperties":
+                continue
+                
+            # Recursively clean nested objects
+            if isinstance(value, dict):
+                cleaned[key] = self._clean_schema_for_gemini(value)
+            elif isinstance(value, list):
+                # Handle arrays
+                cleaned[key] = [
+                    self._clean_schema_for_gemini(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                cleaned[key] = value
+                
+        return cleaned
+        
+    def _fix_missing_required_fields(self, result: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Add default values for any missing required fields based on the schema.
+        
+        Args:
+            result: The API response with potentially missing fields
+            schema: The schema defining the structure and required fields
+            
+        Returns:
+            A dictionary with defaults for any missing required fields
+        """
+        if not isinstance(result, dict) or not isinstance(schema, dict):
+            return result
+            
+        # Get the required fields from the schema
+        required_fields = schema.get("required", [])
+        properties = schema.get("properties", {})
+        
+        # Add default values for missing required fields
+        for field in required_fields:
+            if field not in result:
+                # Add an appropriate default based on the field's type
+                field_schema = properties.get(field, {})
+                field_type = field_schema.get("type", "")
+                
+                if field_type == "string":
+                    result[field] = ""
+                elif field_type == "array":
+                    result[field] = []
+                elif field_type == "object":
+                    result[field] = {}
+                elif field_type == "number" or field_type == "integer":
+                    result[field] = 0
+                elif field_type == "boolean":
+                    result[field] = False
+                else:
+                    # Default fallback
+                    result[field] = None
+                    
+        # Also handle nested objects and arrays
+        for key, value in result.items():
+            if key in properties and isinstance(value, dict):
+                field_schema = properties.get(key, {})
+                if field_schema.get("type") == "object":
+                    # Recursively fix nested objects
+                    result[key] = self._fix_missing_required_fields(value, field_schema)
+                    
+        return result
+
 
 class OpenAIService(AIService):
     """OpenAI service."""

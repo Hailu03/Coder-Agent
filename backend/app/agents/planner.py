@@ -106,22 +106,41 @@ class PlannerAgent(Agent):
                 "performance_considerations"
             ],
             "additionalProperties": False
-        }
-
-        response = await self.generate_structured_output(prompt, output_schema)
+        }        
+        try:
+            response = await self.generate_structured_output(prompt, output_schema)
+        except Exception as e:
+            logger.error(f"Error during planning structured output generation: {e}")
+            response = {}
+        
         print(f"Response from planning: {response}")
 
+        # Check if response is valid
+        if not isinstance(response, dict):
+            logger.warning(f"Response is not a dictionary: {type(response)}")
+            response = {}
+            
+        # Create a default response with all required fields
+        default_response = {
+            "problem_analysis": '',
+            "approach": [],
+            "recommended_libraries": [],
+            "data_structures": [],
+            "algorithms": [],
+            "design_patterns": [],
+            "edge_cases": [],
+            "performance_considerations": []
+        }
+        
+        # If response is empty, return the default
         if not response:
             logger.warning("Failed to generate structured plan")
-            return {
-                "problem_analysis": '',
-                "approach": [],
-                "recommended_libraries": [],
-                "data_structures": [],
-                "algorithms": [],
-                "design_patterns": [],
-                "edge_cases": [],
-                "performance_considerations": []
-            }
+            return default_response
+            
+        # Merge response with default to ensure all fields exist
+        result = default_response.copy()
+        for key, value in response.items():
+            if key in result:
+                result[key] = value
         
-        return response
+        return result

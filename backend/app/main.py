@@ -35,10 +35,10 @@ Base.metadata.create_all(bind=engine)
 # Add CORS middleware with permissive settings for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,  # Sử dụng giá trị từ cấu hình
+    allow_origins=settings.cors_origins,  # Use value from configuration
     allow_credentials=True,
-    allow_methods=["POST", "GET", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"]
+    allow_methods=["POST", "GET", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"]
 )
 
 # Include API router

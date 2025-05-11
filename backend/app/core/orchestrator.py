@@ -66,9 +66,11 @@ class AgentOrchestrator:
             if additional_context:
                 full_requirements = f"{requirements}\n\nAdditional Context:\n{additional_context}"
             
-            # Update phase status
+            # First phase_callback to ensure frontend receives initial state
             if phase_callback:
                 phase_callback("planning", 10)
+                # Small delay for frontend to process
+                await asyncio.sleep(0.1)
             
             # Phase 1: Planning
             planning_input = {
@@ -80,9 +82,12 @@ class AgentOrchestrator:
             plan_result = await self.planner_agent.process(planning_input)
             logger.info(f"Planning result: {plan_result}")
             
-            # Update phase status
+            # Update phase status - send twice to ensure it's received
             if phase_callback:
+                phase_callback("planning", 25)
+                await asyncio.sleep(0.1)
                 phase_callback("research", 30)
+                await asyncio.sleep(0.1)
             
             # Phase 2: Research
             research_input = {
@@ -95,9 +100,12 @@ class AgentOrchestrator:
             research_result = await self.research_agent.process(research_input)
             logger.info(f"Research result: {research_result}")
             
-            # Update phase status
+            # Update phase status with extra confirmation
             if phase_callback:
+                phase_callback("research", 45)
+                await asyncio.sleep(0.1)
                 phase_callback("code_generation", 50)
+                await asyncio.sleep(0.1)
             
             # Phase 3: Code Generation
             code_gen_input = {
@@ -106,16 +114,34 @@ class AgentOrchestrator:
                 "plan": plan_result,
                 "research": research_result
             }
-            
             logger.info("Phase 3: Generating code solution")
-            code_result = await self.code_generator_agent.process(code_gen_input)
+            try:
+                code_result = await self.code_generator_agent.process(code_gen_input)
+                # Ensure code_result is a dictionary
+                if not isinstance(code_result, dict):
+                    logger.warning(f"Code result is not a dictionary: {type(code_result)}")
+                    code_result = {"code": "", "explanation": "", "libraries": [], "best_practices": []}
+            except Exception as e:
+                logger.error(f"Error during code generation: {e}")
+                code_result = {"code": "", "explanation": "Error during code generation", "libraries": [], "best_practices": []}
+            
+            # Send another update midway through code generation
+            if phase_callback:
+                phase_callback("code_generation", 60)
+                await asyncio.sleep(0.1)
             
             # Generate test cases based on requirements and code analysis
-            test_cases_code = await self.test_executor_agent._generate_test_cases_code(full_requirements, code_result.get("code", ""), clean_lang)
+            try:
+                code_str = code_result.get("code", "") if isinstance(code_result, dict) else ""
+                test_cases_code = await self.test_executor_agent._generate_test_cases_code(full_requirements, code_str, clean_lang)
+            except Exception as e:
+                logger.error(f"Error generating test cases: {e}")
+                test_cases_code = ""
     
-            # Update phase status
+            # Update phase status with confirmation
             if phase_callback:
                 phase_callback("test_execution", 70)
+                await asyncio.sleep(0.1)
             
             # Phase 4: Test Execution 
             test_execution_result = None
@@ -162,11 +188,17 @@ class AgentOrchestrator:
                 code = code_result.get("code", "")
                 file_structure = code_result.get("file_structure", {})
                 if phase_callback:
+                    phase_callback("test_execution", 80)
+                    await asyncio.sleep(0.1)
                     phase_callback("completed", 100)
+                    await asyncio.sleep(0.1)
             else:
-                # Update phase status
+                # Update phase status with clear refinement indicator
                 if phase_callback:
+                    phase_callback("test_execution", 80)
+                    await asyncio.sleep(0.1)
                     phase_callback("refinement", 85)
+                    await asyncio.sleep(0.1)
                 # Thêm cơ chế tự động refine code khi test không pass
                 max_refine_attempts = 3  # Số lần refine tối đa
                 refine_count = 0
@@ -178,8 +210,11 @@ class AgentOrchestrator:
                         logger.info("Phase 5: Refining code through agent collaboration")
                     else:
                         logger.info(f"Phase 5: Refine attempt {refine_count + 1}/{max_refine_attempts}")
-                        if phase_callback:
-                            phase_callback(f"refinement_{refine_count + 1}", 85 + (refine_count * 5))
+                    
+                    if phase_callback:
+                        phase_callback(f"refinement", 85 + (refine_count * 5))
+                        await asyncio.sleep(0.1)
+                    
                     # Cập nhật code trong agent_responses nếu đã có refinement trước đó
                     if refine_count > 0:
                         for i, response in enumerate(agent_responses):
@@ -187,6 +222,7 @@ class AgentOrchestrator:
                                 agent_responses[i]["code"] = code
                     try:
                         collaboration_result = await self.code_generator_agent.collaborate(agent_responses)
+                        
                         # Use refined code if available
                         if collaboration_result and collaboration_result.get("refined_code"):
                             logger.info(f"Using refined code from collaboration attempt {refine_count + 1}")
@@ -196,6 +232,12 @@ class AgentOrchestrator:
                             code = refined_code
                             file_structure = refined_file_structure
                             logger.info(f"Re-running tests on refined code (attempt {refine_count + 1})")
+                            
+                            # Send an update for each refinement attempt
+                            if phase_callback:
+                                phase_callback(f"refinement_{refine_count + 1}", 85 + (refine_count * 5))
+                                await asyncio.sleep(0.1)
+                            
                             # Generate new test cases for the refined code
                             refined_test_cases_code = await self.test_executor_agent._generate_test_cases_code(
                                 full_requirements, code, clean_lang
@@ -234,12 +276,15 @@ class AgentOrchestrator:
                     except Exception as e:
                         logger.error(f"Error during refinement attempt {refine_count + 1}: {str(e)}")
                         break
+                
                 # Unescape any HTML entities in the code
                 if code:
                     code = html.unescape(code)  # Convert any HTML entities back to their original characters
-                # Update phase status
+                
+                # Always send a completion update regardless of path taken
                 if phase_callback:
                     phase_callback("completed", 100)
+                    await asyncio.sleep(0.2)
             
             # Compile the final solution
             solution = {
@@ -265,7 +310,7 @@ class AgentOrchestrator:
             }
         
         except Exception as e:
-            logger.error(f"Error in problem-solving workflow: {str(e)}")
+            logger.error(f"Error in problem-solving workflow: {str(e)}", exc_info=True)
             if phase_callback:
                 phase_callback("failed", 0)
                 
