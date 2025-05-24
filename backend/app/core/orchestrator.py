@@ -11,12 +11,12 @@ import re
 from typing import Dict, Any, List, Optional, Callable
 
 from ..agents.planner import PlannerAgent
-from ..agents.researcher import ResearchAgent
+from ..agents.researcher import ResearcherAgent
 from ..agents.developer import DeveloperAgent
 from ..agents.tester import TesterAgent
+from ..agents.documenter import DocumenterAgent
 from ..services.ai_service import get_ai_service
 from ..utils import clean_language_name
-from ..models.models import Solution
 
 # Configure logging
 logger = logging.getLogger("core.orchestrator")
@@ -24,7 +24,6 @@ logger = logging.getLogger("core.orchestrator")
 
 class AgentOrchestrator:
     """Orchestrator that coordinates the collaborative workflow between agents."""
-    
     def __init__(self):
         """Initialize the Agent Orchestrator with specialized agents."""
         # Initialize AI service
@@ -32,9 +31,10 @@ class AgentOrchestrator:
         
         # Initialize specialized agents
         self.planner_agent = PlannerAgent(self.ai_service)
-        self.research_agent = ResearchAgent(self.ai_service)
+        self.research_agent = ResearcherAgent(self.ai_service)
         self.code_generator_agent = DeveloperAgent(self.ai_service)
         self.test_executor_agent = TesterAgent(self.ai_service)
+        self.documenter_agent = DocumenterAgent(self.ai_service)
         
         logger.info("Agent Orchestrator initialized")
     
@@ -162,7 +162,7 @@ class AgentOrchestrator:
                     **plan_result
                 },
                 {
-                    "agent": "ResearchAgent",
+                    "agent": "ResearcherAgent",
                     "type": "research_result",
                     **research_result
                 },
@@ -346,3 +346,47 @@ class AgentOrchestrator:
             logger.info(f"Extracted test case {i+1}: {test_cases[-1]}")
     
         return test_cases
+
+    async def generate_documentation(
+        self,
+        task_id: str,
+        solution_data: Dict[str, Any],
+        phase_callback: Optional[Callable[[str, Optional[float]], None]] = None
+    ) -> Dict[str, Any]:
+        """Generate comprehensive documentation for a completed solution.
+        
+        Args:
+            task_id: The unique identifier for this task
+            solution_data: The complete solution data including requirements, planning, implementation, etc.
+            phase_callback: Optional callback for progress updates
+            
+        Returns:
+            Documentation object in markdown format
+        """
+        logger.info(f"Generating documentation for task {task_id}")
+        
+        if phase_callback:
+            phase_callback("documentation_started", None)
+        
+        try:
+            # Process the documentation request with the Documenter Agent
+            documentation = await self.documenter_agent.process({
+                "requirements": solution_data.get("requirements", ""),
+                "planning": solution_data.get("planning_output", {}),
+                "research": solution_data.get("research_output", {}),
+                "implementation": solution_data.get("implementation_output", {}),
+                "testing": solution_data.get("testing_output", {}),
+                "language": solution_data.get("language", "python")
+            })
+            
+            if phase_callback:
+                phase_callback("documentation_completed", 1.0)
+            
+            logger.info(f"Documentation generation completed for task {task_id}")
+            return documentation
+            
+        except Exception as e:
+            logger.error(f"Error generating documentation: {str(e)}")
+            if phase_callback:
+                phase_callback("documentation_error", None)
+            raise

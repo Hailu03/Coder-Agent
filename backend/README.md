@@ -47,7 +47,7 @@ AI_PROVIDER=gemini
 # API Keys
 GEMINI_API_KEY=your_gemini_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
-SERPER_API_KEY=your_serper_api_key_here
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
 
 # Other configurations
 PROJECT_NAME="Coder-Agent"

@@ -107,12 +107,6 @@ async def update_settings(
             
             changes_made = True
         
-        if data.serper_api_key:
-            logger.info("Setting SERPER_API_KEY")
-            update_env_var("SERPER_API_KEY", data.serper_api_key)
-            os.environ["SERPER_API_KEY"] = data.serper_api_key
-            changes_made = True
-        
         if not changes_made:
             logger.info("No changes were made to settings")
             return {"success": True, "message": "No changes were made to settings"}
@@ -164,12 +158,11 @@ async def get_settings(
         logger.info(f"User {current_user.username} is retrieving current settings")
         logger.info(f"Request headers: {request.headers}")
         
-        # Don't return actual API keys, just indicate if they're set
+        # Don't return actual API keys, just indicate if they're set        
         return {
             "ai_provider": settings.AI_PROVIDER,
             "gemini_api_key_set": bool(settings.GEMINI_API_KEY),
             "openai_api_key_set": bool(settings.OPENAI_API_KEY),
-            "serper_api_key_set": bool(settings.SERPER_API_KEY)
         }
     except Exception as e:
         logger.error(f"Error retrieving settings: {str(e)}")

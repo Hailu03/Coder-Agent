@@ -3,6 +3,18 @@
 This module imports and exports all models defined in the models.py file.
 """
 
-from .models import Agent, Task, Solution, AgentResponse
+from .models import (
+    TaskStatus,
+    SettingsUpdateRequest,
+    SolveRequest,
+    TaskResponse,
+    SolutionResponse
+)
 
-__all__ = ['Agent', 'Task', 'Solution', 'AgentResponse']
+__all__ = [
+    "TaskStatus",
+    "SettingsUpdateRequest",
+    "SolveRequest",
+    "TaskResponse",
+    "SolutionResponse"
+]

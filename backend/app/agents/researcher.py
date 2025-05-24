@@ -16,7 +16,7 @@ from ..services.mcp import MCPServer
 # Configure logging
 logger = logging.getLogger("agents.researcher")
 
-class ResearchAgent(Agent):
+class ResearcherAgent(Agent):
     """Agent responsible for gathering information from external sources."""
     
     def __init__(self, ai_service: AIService, mcp_server: Optional[MCPServer] = None):
@@ -26,7 +26,7 @@ class ResearchAgent(Agent):
             ai_service: AI service for interacting with language models
             mcp_server: Optional MCP server for accessing external code information
         """
-        super().__init__(name="ResearchAgent", ai_service=ai_service)
+        super().__init__(name="ResearcherAgent", ai_service=ai_service)
         self.mcp_server = mcp_server or MCPServer()
     
     async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -164,7 +164,6 @@ class ResearchAgent(Agent):
             "summary": summary,
             "language": language
         }
-    
     async def _research_library(self, library: str, language: str) -> Dict[str, Any]:
         """Research a specific library for the given language.
         
@@ -179,11 +178,11 @@ class ResearchAgent(Agent):
         search_query = f"{library} library in {language} programming tutorial examples usage"
         
         try:
-            # Search using MCP Server
-            search_results = await self.mcp_server.search(search_query)
+            # Search using MCP Server with Firecrawl
+            search_results = await self.mcp_server.search(search_query, limit=3)
             
-            if "error" in search_results:
-                logger.error(f"Error searching for library {library}: {search_results['error']}")
+            if not search_results.get("success", False) or "error" in search_results:
+                logger.error(f"Error searching for library {library}: {search_results.get('error', 'Unknown error')}")
                 return None
                 
             # Summarize search results
@@ -257,7 +256,7 @@ class ResearchAgent(Agent):
             search_results = await self.mcp_server.search(search_query)
             
             if "error" in search_results:
-                logger.error(f"Error searching for algorithm {algorithm}: {search_results['error']}")
+                logger.error(f"Error searching for algorithm {algorithm}: {search_results}")
                 return None
                 
             # Summarize search results
@@ -332,7 +331,7 @@ class ResearchAgent(Agent):
             search_results = await self.mcp_server.search(search_query)
             
             if "error" in search_results:
-                logger.error(f"Error searching for data structure {data_structure}: {search_results['error']}")
+                logger.error(f"Error searching for data structure {data_structure}: {search_results}")
                 return None
                 
             # Summarize search results
@@ -417,7 +416,7 @@ class ResearchAgent(Agent):
             search_results = await self.mcp_server.search(search_query)
             
             if "error" in search_results:
-                logger.error(f"Error searching for design pattern {pattern}: {search_results['error']}")
+                logger.error(f"Error searching for design pattern {pattern}: {search_results}")
                 return None
                 
             # Summarize search results
@@ -506,7 +505,7 @@ class ResearchAgent(Agent):
                 search_results = search_results["results"]
             
             if "error" in search_results:
-                logger.error(f"Error searching for performance considerations: {search_results['error']}")
+                logger.error(f"Error searching for performance considerations: {search_results}")
                 return None
                 
             # Summarize search results
@@ -581,7 +580,7 @@ class ResearchAgent(Agent):
             search_results = await self.mcp_server.search(search_query)
             
             if "error" in search_results:
-                logger.error(f"Error searching for best practices: {search_results['error']}")
+                logger.error(f"Error searching for best practices: {search_results}")
                 return None
                 
             # Summarize search results

@@ -10,6 +10,21 @@ import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 import './App.css'
 
+// Layout wrapper component
+const MainLayout = ({ children, darkMode, toggleDarkMode }: { 
+  children: React.ReactNode, 
+  darkMode: boolean, 
+  toggleDarkMode: () => void 
+}) => {
+  return (
+    <div className="app-container">
+      <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+      <main className="main-content">{children}</main>
+      <Footer />
+    </div>
+  );
+};
+
 function App() {
   // State for dark/light mode
   const [darkMode, setDarkMode] = useState(true);
@@ -71,19 +86,32 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <div className="app-container">
-          <Header darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/solve" element={<SolvePage />} />
-              <Route path="/result/:taskId" element={<ResultPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
+        <Routes>
+          {/* Result page without standard layout */}
+          <Route path="/result/:taskId" element={<ResultPage />} />
+          
+          {/* All other pages with standard layout */}
+          <Route path="/" element={
+            <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+              <HomePage />
+            </MainLayout>
+          } />          
+          <Route path="/solve" element={
+            <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+              <SolvePage />
+            </MainLayout>
+          } />
+          <Route path="/login" element={
+            <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+              <LoginPage />
+            </MainLayout>
+          } />
+          <Route path="*" element={
+            <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+              <NotFoundPage />
+            </MainLayout>
+          } />
+        </Routes>
       </BrowserRouter>
     </ThemeProvider>
   )

@@ -20,6 +20,8 @@ services:
 
   backend:
     container_name: backend
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
     build:
       dockerfile: Dockerfile
     ports:
@@ -27,7 +29,7 @@ services:
     volumes:
       - ./:/app
       - ./.env:/app/.env
-    command: python /app/run.py 
+    command: python /app/run.py --host
     restart: always
     depends_on:
       mysql:

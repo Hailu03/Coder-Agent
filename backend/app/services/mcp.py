@@ -50,15 +50,25 @@ class MCPServer:
         except Exception as e:
             logger.error(f"Error validating MCP server connection: {e}")
             return False
-    
-    async def search(self, query: str) -> Dict[str, Any]:
-        """Search web using Serper API via MCP Server.
+    async def search(self, query: str, limit: int = 3) -> Dict[str, Any]:
+        """Search web using Firecrawl API via MCP Server.
         
         Args:
             query: Search query string
+            limit: Number of results to return (default: 3)
             
         Returns:
-            JSON response from Serper API or fallback response
+            JSON response from Firecrawl API or fallback response with format:
+            {
+              "success": true,
+              "data": [
+                {
+                  "title": "<string>",
+                  "description": "<string>",
+                  "url": "<string>"
+                }
+              ]
+            }
         """
         # First validate connection if needed
         if not self.connection_validated:
@@ -74,9 +84,9 @@ class MCPServer:
                         try:
                             await session.initialize()
                             # Call search tool
-                            logger.info(f"Calling MCP search with query: '{query}'")
+                            logger.info(f"Calling MCP search with query: '{query}' (limit: {limit})")
                             result = await asyncio.wait_for(
-                                session.call_tool("search", {"query": query, "api_key": settings.SERPER_API_KEY}),
+                                session.call_tool("search", {"query": query, "limit": limit}),
                                 timeout=60
                             )
                             # Parse JSON result
@@ -115,7 +125,6 @@ class MCPServer:
         except Exception as e:
             logger.error(f"Error connecting to MCP Server for query: '{query}': {e}")
             return self._create_fallback_response(query)
-            
     def _create_fallback_response(self, query: str) -> Dict[str, Any]:
         """Create a fallback response when search fails.
         
@@ -123,17 +132,17 @@ class MCPServer:
             query: The original search query
             
         Returns:
-            A minimal response with the search query
+            A minimal response following Firecrawl format
         """
         logger.info(f"Creating fallback response for query: '{query}'")
         return {
-            "searchParameters": {
-                "q": query
-            },
-            "organic": [
+            "success": False,
+            "data": [
                 {
                     "title": f"Fallback result for: {query}",
-                    "snippet": f"The search for '{query}' could not be completed. Using built-in knowledge instead."
+                    "description": f"The search for '{query}' could not be completed. Using built-in knowledge instead.",
+                    "url": "#"
                 }
-            ]
+            ],
+            "error": "Search service unavailable"
         }

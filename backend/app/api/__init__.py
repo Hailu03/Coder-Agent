@@ -17,6 +17,10 @@ from .v1 import solve
 from .v1 import settings as settings_router
 from .v1 import auth as auth_router
 from .v1 import events as events_router
+from .v1 import documentation as documentation_router
+from .v1 import execute as execute_router
+from .v1 import chat as chat_router
+from .v1 import conversations as conversations_router
 
 # Include the solve routes
 api_router.include_router(solve.router, prefix="/solve", tags=["solve"])
@@ -29,3 +33,15 @@ api_router.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 
 # Include the events routes for real-time updates
 api_router.include_router(events_router.router, prefix="/events", tags=["events"])
+
+# Include the documentation routes
+api_router.include_router(documentation_router.router, prefix="/documentation", tags=["documentation"])
+
+# Include the code execution routes
+api_router.include_router(execute_router.router, prefix="/execute", tags=["execute"])
+
+# Include the chat routes
+api_router.include_router(chat_router.router, prefix="/chat", tags=["chat"])
+
+# Include the conversations routes
+api_router.include_router(conversations_router.router, prefix="/conversations", tags=["conversations"])

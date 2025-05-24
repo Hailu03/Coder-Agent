@@ -5,9 +5,10 @@ This server exposes tools that can be called by OpenAI Agents to access data and
 
 from mcp.server.fastmcp import FastMCP
 import os
-import http.client
-import json
 import logging
+from firecrawl import AsyncFirecrawlApp
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger("mcpserver")
 
@@ -20,6 +21,9 @@ class MCPTools:
     def __init__(self):
         # Initialize FastMCP
         self.mcp = FastMCP("MCP API Server", port=9000)
+        self.firecrawl_app = AsyncFirecrawlApp(
+            api_key=os.getenv("FIRECRAWL_API_KEY"),
+        )
 
         try:
             # Register tools
@@ -27,39 +31,31 @@ class MCPTools:
             logger.info("MCP Tools initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing MCP Tools: {str(e)}")
-            raise
-
+            raise    
+        
     def _register_tools(self):
         @self.mcp.tool()
-        def search(query: str, api_key: str) -> str:
+        async def search(query: str, limit: int = 3) -> dict:
             """
-            Search tool using Serper API.
+            Search for a query using the Firecrawl API.
             Args:
                 query (str): The search query.
-                api_key (str): The API key for Serper API.
+                limit (int): Number of results to return (default: 3).
             Returns:
-                str: The search results in JSON format.
+                dict: The search results with title, description, and URL.
             """
-            logger.info(f"Search tool called with query: {query}")
-            if not api_key:
-                raise ValueError("API key is required for the search tool.")
-            conn = http.client.HTTPSConnection("google.serper.dev")
-
-            payload = json.dumps({
-                "q": query
-            })
-            headers = {
-                'X-API-KEY': api_key,
-                'Content-Type': 'application/json'
-            }
-
-            conn.request("POST", "/search", payload, headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-
-            print(data)
-
-            return data
+            try:
+                logger.info(f"Searching with Firecrawl: '{query}' (limit: {limit})")
+                response = await self.firecrawl_app.search(query=query, limit=limit)
+                # Format response already handled by Firecrawl SDK
+                return response
+            except Exception as e:
+                logger.error(f"Error in search tool: {str(e)}")
+                return {
+                    "success": False,
+                    "data": [],
+                    "error": str(e)
+                }
 
     def run_server(self, transport="sse", port=9000): # Giữ port ở đây để logging nếu muốn
         """

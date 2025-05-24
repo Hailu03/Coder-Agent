@@ -242,31 +242,6 @@ class DeveloperAgent(Agent):
                 "file_structure": {}
             }
         
-        # Create a safe copy of response with all required fields
-        safe_response = {
-            "code": "",
-            "explanation": "",
-            "libraries": [],
-            "best_practices": [],
-            "file_structure": {"files": [], "directories": []}
-        }
-        
-        # Copy values from response, if they exist
-        for key in safe_response:
-            if key in response:
-                safe_response[key] = response[key]
-                
-        # If code field exists, clean it up
-        if safe_response["code"]:
-            safe_response["code"] = self.strip_markdown_code_block(safe_response["code"])
-        # If no code but explanation exists, use that
-        elif safe_response["explanation"]:
-            logger.warning("No code field in response, using explanation as code")
-            safe_response["code"] = safe_response["explanation"]
-            
-        # Return the safe response with all required fields
-        return safe_response
-        
         # Format the response
         formatted_response = {
             "code": response.get("code", ""),
@@ -516,23 +491,12 @@ class DeveloperAgent(Agent):
             logger.warning(f"Expected string for markdown stripping, got {type(text)}")
             return str(text) if text is not None else ""
             
-        try:
-            # Nhận diện code block markdown có hoặc không có tên ngôn ngữ
-            code_blocks = re.findall(r"```(?:\w+)?\n([\s\S]*?)```", text)
-            if code_blocks:
-                # Nếu có nhiều code block, lấy cái đầu tiên
-                return code_blocks[0].strip()
-                
-            # Alternative pattern for code blocks without newlines after backticks
-            code_blocks = re.findall(r"```(?:\w+)?([\s\S]*?)```", text)
-            if code_blocks:
-                return code_blocks[0].strip()
-                
-            # Nếu không có code block, trả về text gốc
-            return text.strip()
-        except Exception as e:
-            logger.error(f"Error in strip_markdown_code_block: {e}")
-            return text
+        if text.startswith(f"```{self.language}"):
+            text = text.strip()
+            # Remove the opening and closing code block markers
+            text = text[len(f"```{self.language}"):-3]
+
+        return text.strip()
     
     async def _extract_file_structure(self, code: str, language: str) -> Dict[str, Any]:
         """Extract file structure from generated code.

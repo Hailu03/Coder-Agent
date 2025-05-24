@@ -6,7 +6,7 @@ services:
       # Use development stage for hot-reload
       target: build
     ports:
-      - "3000:5173"  # Thay đổi cổng 80 thành 3000 để tránh xung đột
+      - "3000:3000"  # Thay đổi cổng 80 thành 3000 để tránh xung đột
     volumes:
       # Mount source code for development
       - ./:/app

@@ -1,0 +1,108 @@
+/* RetroTheme.css - Additional styling for code display */
+
+/* Editor Container Style */
+.monaco-editor {
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.retro-editor-container {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Style for the toolbar of our code editor */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: #252526;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+/* Fake macOS-style window buttons */
+.editor-buttons {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.editor-button {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.editor-button-red {
+  background-color: #ff5f56;
+}
+
+.editor-button-yellow {
+  background-color: #ffbd2e;
+}
+
+.editor-button-green {
+  background-color: #27c93f;
+}
+
+.editor-title {
+  flex: 1;
+  font-size: 13px;
+  color: #ddd;
+  margin: 0;
+  text-align: center;
+  font-family: 'Menlo', 'Monaco', monospace;
+}
+
+/* Enhanced chat styling */
+.chat-message {
+  transition: transform 0.2s;
+}
+
+.chat-message:hover {
+  transform: translateY(-2px);
+}
+
+.agent-avatar {
+  transition: all 0.3s;
+}
+
+.agent-avatar:hover {
+  transform: scale(1.2);
+}
+
+/* Styling for agent badges */
+.agent-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  max-width: fit-content;
+}
+
+.planner-badge {
+  border-left: 3px solid #3f51b5;
+}
+
+.researcher-badge {
+  border-left: 3px solid #2196f3;
+}
+
+.developer-badge {
+  border-left: 3px solid #4caf50;
+}
+
+.tester-badge {
+  border-left: 3px solid #ff9800;
+}
+
+.system-badge {
+  border-left: 3px solid #9c27b0;
+}

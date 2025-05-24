@@ -22,6 +22,9 @@ from ...db.models import User, Task
 from ...db.database import get_db
 from .events import task_status_update
 
+# Create DB session for background task
+from ...db.database import SessionLocal
+
 # Configure logging
 logger = logging.getLogger("api.solve")
 
@@ -238,10 +241,15 @@ async def get_task_history(
             result.append({
                 "task_id": task.id,
                 "status": task.status,
-                "language": task.language,
                 "requirements": task.requirements[:100] + "..." if len(task.requirements) > 100 else task.requirements,
+                "language": task.language,
+                "solution": task.solution,
+                "additional_context": task.additional_context,
+                "explanation": task.explanation,
+                "error": task.error,
+                "code_files": task.code_files,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
-                "completed": task.status == TaskStatus.COMPLETED,
+                "updated_at": task.updated_at.isoformat() if task.updated_at else None,
                 "detailed_status": task.detailed_status
             })
             
@@ -263,9 +271,6 @@ async def process_solution_task(task_id: str, requirements: str, language: str, 
         language: The programming language
         additional_context: Additional context for the problem
     """
-    # Create DB session for background task
-    from ...db.database import SessionLocal
-    
     db = SessionLocal()
     try:
         # Get task from database

@@ -82,15 +82,12 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
   // User menu state
   const [userAnchorEl, setUserAnchorEl] = useState<null | HTMLElement>(null);
   const userMenuOpen = Boolean(userAnchorEl);
-  
-  // AI model settings
+    // AI model settings
   const [aiModel, setAiModel] = useState<string>('gemini');
   const [apiKey, setApiKey] = useState<string>('');
-  const [serperApiKey, setSerperApiKey] = useState<string>('');
   
   // Password visibility states
   const [showApiKey, setShowApiKey] = useState(false);
-  const [showSerperApiKey, setShowSerperApiKey] = useState(false);
   
   // Alert state
   const [alertOpen, setAlertOpen] = useState(false);
@@ -267,11 +264,9 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
     
     try {
       setIsSettingsSaving(true);
-      
-      const settings: SettingsUpdateRequest = {
+        const settings: SettingsUpdateRequest = {
         ai_provider: aiModel,
         api_key: apiKey,
-        serper_api_key: serperApiKey
       };
       
       // Save settings via API
@@ -326,8 +321,7 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
   return (
     <AppBar position="static" elevation={4}>
       <Toolbar>
-        {/* Logo and App Name */}
-        <Box display="flex" alignItems="center" component={Link} to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+        {/* Logo and App Name */}        <Box display="flex" alignItems="center" component={Link} to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
           <Code sx={{ mr: 1 }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Collaborative Coding Agents
@@ -335,6 +329,26 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
         </Box>
         
         <Box sx={{ flexGrow: 1 }} />
+
+        {/* Navigation Links */}
+        <Box sx={{ display: 'flex', mr: 2 }}>
+          <Button 
+            color="inherit" 
+            component={Link} 
+            to="/"
+            sx={{ mx: 1 }}
+          >
+            Home
+          </Button>
+          <Button 
+            color="inherit" 
+            component={Link} 
+            to="/solve"
+            sx={{ mx: 1 }}
+          >
+            Solve
+          </Button>
+        </Box>
         
         <Box sx={{ display: 'flex' }}>
           {/* User Menu Button */}
@@ -380,9 +394,8 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
           }}
           transformOrigin={{ horizontal: 'right', vertical: 'top' }}
           anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        >
-          {isLoggedIn ? (
-            <>
+        >          {isLoggedIn ? (
+            <Box component="div">
               <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center' }}>
                 <Avatar sx={{ mr: 1.5 }}>
                   {userInfo.name.charAt(0).toUpperCase()}
@@ -410,7 +423,7 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
                 </ListItemIcon>
                 Sign Out
               </MenuItem>
-            </>
+            </Box>
           ) : (
             <MenuItem onClick={handleLoginClick}>
               <ListItemIcon>
@@ -517,36 +530,6 @@ const Header = ({ darkMode, toggleDarkMode }: HeaderProps) => {
                     </InputAdornment>
                   )
                 }}
-              />
-              
-              {/* Serper API Key Input */}
-              <TextField 
-                label="Serper API Key" 
-                variant="outlined" 
-                fullWidth 
-                size="small"
-                type={showSerperApiKey ? "text" : "password"}
-                value={serperApiKey}
-                onChange={(e) => setSerperApiKey(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                sx={{ mb: 1 }}
-                InputProps={{ 
-                  style: { fontSize: '0.9rem' },
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        aria-label="toggle serper api key visibility"
-                        onClick={() => setShowSerperApiKey(!showSerperApiKey)}
-                        edge="end"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        {showSerperApiKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                      </IconButton>
-                    </InputAdornment>
-                  )
-                }}
-                InputLabelProps={{ style: { fontSize: '0.9rem' } }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, mt: -0.5 }}>
                 Used for web search functionality

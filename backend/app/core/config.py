@@ -55,10 +55,6 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY", None)
     OPENAI_MODEL: str = "gpt-4o-mini"
 
-    
-    # External API settings
-    SERPER_API_KEY: Optional[str] = None
-
     # MCP URL - supports different environments (local dev vs Docker)
     # Environment variable can override this default
     MCP_URL: str = os.environ.get("MCP_URL", "http://mcp-server:9000/sse")

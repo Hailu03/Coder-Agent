@@ -5,7 +5,7 @@ This folder contains the Model Context Protocol server for the Collaborative Cod
 ## Overview
 
 The MCP (Model Context Protocol) server provides extended functionality for the AI agents, including:
-- Web search capabilities via Serper API
+- Web search capabilities via Firecrawl API
 - Integration with external data sources
 - Standardized communication protocol for agents
 
